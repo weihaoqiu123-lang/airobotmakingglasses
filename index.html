@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#080b12">
+    <meta name="description" content="从镜框、配色到镜腿 Logo，在实时 3D 工坊里设计一副属于你的眼镜。">
+    <title>FORM OPTICS · 眼镜定制工坊</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a class="brand" href="#top" aria-label="FORM OPTICS 首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>FORM<span class="brand-dot">.</span><br>OPTICS</span></a>
+        <nav aria-label="网站导航">
+          <a href="#workbench">定制工坊</a>
+          <a href="#process">制作流程</a>
+        </nav>
+        <a class="header-action" href="#customizer">开始定制</a>
+      </div>
+    </header>
+    <main id="top" class="shell">
+      <section class="intro" aria-labelledby="title">
+        <p class="eyebrow"><span></span> FORM OPTICS / NIGHT WORKSHOP</p>
+        <h1 id="title">把你的标识，<span>造进眼镜。</span></h1>
+        <p class="intro-copy">选镜框、配色和镜腿 Logo。下单后看机器人工匠从一块原坯开始，亲手做出你的眼镜。</p>
+      </section>
+      <section class="workbench" id="workbench" aria-label="实时眼镜定制工坊">
+        <figure class="stage">
+          <div class="stage-visual" id="stage-visual">
+            <img id="scene-poster" class="scene-poster" src="/workshop.webp" alt="霓虹灯下的眼镜工坊，机器人站在加工机和充电仓之间">
+            <img id="photo-stage" class="photo-stage" alt="用当前镜框、颜色和 Logo 渲染的写实商品图" hidden>
+            <div id="render-host" class="render-host" aria-hidden="true"></div>
+            <div class="stage-top">
+              <span class="live-chip"><span></span><b id="render-label">实时 3D</b></span>
+              <span class="machine-id">FORM / LAB<span> 01</span></span>
+            </div>
+            <div id="stage-caption" class="stage-caption">
+              <span id="stage-kicker">WORKSHOP</span>
+              <strong id="stage-title">工坊待机中</strong>
+              <span id="stage-detail">机台已备好未加工的原坯</span>
+            </div>
+            <div class="stage-controls">
+              <button type="button" id="view-toggle" class="glass-control" aria-pressed="false">眼镜预览</button>
+              <button type="button" id="motion-toggle" class="glass-control motion-control" aria-label="暂停动画" aria-pressed="false"><span aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <figcaption class="stage-footer">
+            <span><span class="footer-indicator"></span><strong id="stage-status">工坊就绪</strong></span>
+            <span id="robot-state" class="robot-state" data-status="ready">机器人待命</span>
+            <span id="stage-meta">等待定制</span>
+          </figcaption>
+        </figure>
+        <section id="customizer" class="customizer" aria-labelledby="customizer-title">
+          <div class="customizer-top"><h2 id="customizer-title">定制你的眼镜</h2><span id="step-counter">01 / 04</span></div>
+          <div class="steps" id="steps" aria-label="定制步骤"></div>
+          <div id="custom-content" class="custom-content"></div>
+          <div id="custom-actions" class="custom-actions"></div>
+        </section>
+      </section>
+      <section class="process" id="process" aria-labelledby="process-title">
+        <div class="process-heading"><h2 id="process-title">工坊制作流程</h2><span>FABRICATION SEQUENCE</span></div>
+        <ol>
+          <li><span class="process-icon frame-icon" aria-hidden="true"><i></i><i></i></span><div><strong>设计你的眼镜</strong><p>选择镜框、颜色、Logo 和数量。</p></div></li>
+          <li><span class="process-icon ticket-icon" aria-hidden="true"></span><div><strong>确认并出单</strong><p>确认成品图后，用模拟支付发送订单。</p></div></li>
+          <li><span class="process-icon spark-icon" aria-hidden="true">✦</span><div><strong>原坯成型</strong><p>机器人投料、切割、上色并印标。</p></div></li>
+          <li><span class="process-icon package-icon" aria-hidden="true"></span><div><strong>装盒与充电</strong><p>机器人装盒后回仓充电，接到新单即可出仓。</p></div></li>
+        </ol>
+      </section>
+    </main>
+    <footer class="site-footer"><div class="shell"><strong>FORM<span>.</span> OPTICS</strong><span>眼镜定制演示 · 模拟支付</span></div></footer>
+    <dialog id="payment-dialog" aria-labelledby="payment-title">
+      <div class="dialog-inner">
+        <p class="eyebrow"><span></span> DEMO CHECKOUT</p>
+        <h2 id="payment-title">模拟支付</h2>
+        <p>确认后，工坊会收到你的定制单并开始制作演示。无需填写付款资料。</p>
+        <div class="payment-amount"><span>订单合计</span><strong id="payment-total"></strong></div>
+        <div class="dialog-actions"><button id="cancel-payment" class="button secondary" type="button">取消</button><button id="confirm-payment" class="button primary" type="button">确认模拟支付</button></div>
+      </div>
+    </dialog>
+    <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
