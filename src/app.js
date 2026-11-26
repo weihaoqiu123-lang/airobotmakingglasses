@@ -29,9 +29,9 @@ const production = {
 const fabrication = {
   loading: ['STOCK DRAWER', '拉开底部抽屉，夹起方形板材', 'LOADING'],
   cutting: ['FRAME CUTTING', '切出订单指定的镜框轮廓', 'CUTTING'],
-  temples: ['TEMPLE FORMING', '用余料分别加工两根镜腿', 'TEMPLES'],
-  assembly: ['ASSEMBLY', '把左、右镜腿装到镜框上', 'ASSEMBLY'],
-  color: ['SPRAY FINISH', '喷涂镜框和镜腿，原料色逐步变为订单颜色', 'COLOR'],
+  temples: ['TEMPLE FORMING', '左手依次加工，第一根镜腿交到右手', 'TEMPLES'],
+  assembly: ['ASSEMBLY', '背对镜头，用双手同时装好镜腿', 'ASSEMBLY'],
+  color: ['DUAL SPRAY', '双手各持一把喷枪，从两侧向镜桥喷涂', 'COLOR'],
   marking: ['TEMPLE MARKING', '印制镜腿 Logo', 'MARKING'],
   inspection: ['QUALITY CHECK', '机器人举起眼镜，转动检查', 'QA CHECK'],
   packing: ['PACKING', '折叠镜腿、放入盒内并合盖', 'PACKING'],
@@ -392,9 +392,9 @@ function showCue(cue, detailCue, snapshot) {
   const [tag, hint, screen] = fabrication[detailCue] ?? [item.tag, item.detail, item.screen];
   const ticketDetail = {
     print: '打印小票 · ' + (snapshot?.receipt?.seconds ?? 1.8).toFixed(2) + ' 秒',
-    take: '机器人取走小票',
+    take: '机器人侧身，用右手取走小票',
     read: '机器人读到订单数量 ' + order.design.quantity + ' 副',
-    insert: '机器人将小票插入机器',
+    insert: '机器人侧身，用右手把小票送入机器',
   };
   const detail = cue === 'ticket' ? ticketDetail[snapshot?.part ?? 'print'] :
     detailCue === 'marking' && !order.design.logo ? '检查镜腿表面，保留素面外观' : hint;

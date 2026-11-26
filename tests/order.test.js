@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOrder, receiptFor, recordDispatch, pairRate, pairPhaseAt, rechargeSeconds } from '../src/order.js';
+import { createOrder, receiptFor, receiptTiming, recordDispatch, pairRate, pairPhaseAt, pairSeconds, rechargeSeconds } from '../src/order.js';
 
 test('a submitted order snapshots the confirmed custom design and derives the demo total', () => {
   const design = { frame: 'round', color: 'forest', logo: 'data:image/png;base64,test', logoName: 'club.png', quantity: 3 };
@@ -30,9 +30,19 @@ test('ticket size, time, and surprise match quantity and reaction boundaries', (
 });
 
 test('one pair proceeds from drawer loading through dispatch', () => {
-  assert.deepEqual([0, 6, 10, 14, 17, 20.5, 22, 24, 28].map(pairPhaseAt),
+  assert.deepEqual([0, 6, 10, 15.2, 20, 26.4, 28, 30, 34].map(pairPhaseAt),
     ['loading', 'cutting', 'temples', 'assembly', 'color', 'marking', 'inspection', 'packing', 'conveyor']);
+  assert.equal(pairSeconds, 36);
   assert.equal(rechargeSeconds, 10);
+});
+
+test('read and insert follow a complete print and leave time for both turns', () => {
+  for (const quantity of [1, 6, 40, 99]) {
+    const receipt = receiptTiming(quantity);
+    assert.ok(receipt.readAt >= receipt.printAt + receipt.seconds + 1.4);
+    assert.ok(receipt.insertAt > receipt.readAt);
+    assert.ok(receipt.duration >= receipt.insertAt + 2.2);
+  }
 });
 
 test('dispatch counts every carton and never advances beyond the actual order', () => {

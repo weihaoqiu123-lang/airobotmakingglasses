@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { pairSeconds, receiptTiming } from '../src/order.js';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:5173/';
 const browser = await chromium.launch({
@@ -136,10 +137,11 @@ async function verifyLargeBatch() {
   await page.locator('[data-receipt=print]').waitFor();
   assert.equal(await page.locator('#stage-visual').getAttribute('data-ticket-length'), '1.7');
   assert.equal(await page.locator('#stage-visual').getAttribute('data-ticket-seconds'), '3.2');
-  await page.clock.runFor(107000);
+  const tenthBox = receiptTiming(40).duration + pairSeconds + 9 * pairSeconds / 4;
+  await page.clock.runFor(Math.round((tenthBox + .7) * 1000));
   assert.equal(await page.locator('#production-count').textContent(), '制作进度 10 / 40');
   assert.equal(await page.locator('#speed').textContent(), '恢复原速');
-  await page.clock.runFor(226000);
+  await page.clock.runFor(Math.round((30 * pairSeconds / 4 + .6) * 1000));
   assert.equal(await page.locator('#production-count').textContent(), '制作进度 40 / 40');
   assert.equal(await page.locator('#robot-state').getAttribute('data-status'), 'returning');
   assert.deepEqual(errors, []);

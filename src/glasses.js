@@ -74,7 +74,9 @@ export function makeGlasses(design, logoImage, { photo = false } = {}) {
   const model = new T.Group();
   model.userData.temples = [];
   const color = colors[design.color].hex;
-  const acetate = physical(color, photo ? { roughness: .21, metalness: .01, clearcoat: .92, clearcoatRoughness: .17 } : {});
+  const bridgeFinish = physical(color, photo ? { roughness: .21, metalness: .01, clearcoat: .92, clearcoatRoughness: .17 } : {});
+  const rimFinishes = [];
+  const templeFinishes = [];
   const hinge = physical('#a8aa97', { metalness: .72, roughness: .28 });
   const glass = physical(photo ? '#f8fafc' : '#cfdbef', photo ?
     { transmission: .95, roughness: .07, thickness: .026, ior: 1.52, side: T.DoubleSide, metalness: 0 } :
@@ -91,11 +93,15 @@ export function makeGlasses(design, logoImage, { photo = false } = {}) {
   const offset = design.frame === 'oval' ? .55 : .519;
   const logoMaterials = [];
   for (const side of [-1, 1]) {
-    mesh(model, rim, acetate, side * offset, 0, 0);
+    const rimFinish = bridgeFinish.clone();
+    const templeFinish = bridgeFinish.clone();
+    rimFinishes.push(rimFinish);
+    templeFinishes.push(templeFinish);
+    mesh(model, rim, rimFinish, side * offset, 0, 0);
     const lensPart = mesh(model, lens, glass, side * offset, 0, .046);
     lensPart.castShadow = false;
     const start = side * (offset + profiles[design.frame][0] * .91);
-    box(model, [.124, .116, .15], [start, .068, -.04], acetate, .032);
+    box(model, [.124, .116, .15], [start, .068, -.04], rimFinish, .032);
     const temple = new T.Group();
     temple.position.set(start, .068, -.04);
     model.add(temple);
@@ -105,13 +111,13 @@ export function makeGlasses(design, logoImage, { photo = false } = {}) {
       [side * .035, -.015, -.67], [-side * .01, -.058, -1],
       [-side * .115, -.194, -1.19], [-side * .154, -.248, -1.24],
     ];
-    rod(temple, earpiece, .057, acetate);
-    box(temple, [.099, .106, .53], [side * .025, -.005, -.346], acetate, .035);
+    rod(temple, earpiece, .057, templeFinish);
+    box(temple, [.099, .106, .53], [side * .025, -.005, -.346], templeFinish, .035);
     mesh(model, new T.SphereGeometry(.019, 10, 8), hinge, start, .084, .109);
     if (logoImage) logoMaterials.push(addLogo(temple, logoImage, side));
   }
-  rod(model, [[-.159, .074, .039], [-.086, .155, .049], [0, .168, .051], [.086, .155, .049], [.159, .074, .039]], .049, acetate);
-  Object.assign(model.userData, { acetate, glass, logoMaterials });
+  rod(model, [[-.159, .074, .039], [-.086, .155, .049], [0, .168, .051], [.086, .155, .049], [.159, .074, .039]], .049, bridgeFinish);
+  Object.assign(model.userData, { bridgeFinish, rimFinishes, templeFinishes, glass, logoMaterials });
   return model;
 }
 

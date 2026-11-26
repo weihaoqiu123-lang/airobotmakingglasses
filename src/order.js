@@ -19,7 +19,7 @@ export const defaultDesign = Object.freeze({
 export const unitPrice = 299;
 export const maxQuantity = 99;
 export const rechargeSeconds = 10;
-export const pairSeconds = 30;
+export const pairSeconds = 36;
 
 export function createOrder(design, id) {
   if (!Object.hasOwn(frames, design.frame) || !Object.hasOwn(colors, design.color) ||
@@ -42,6 +42,14 @@ export function receiptFor(quantity) {
   };
 }
 
+export function receiptTiming(quantity) {
+  const spec = receiptFor(quantity);
+  const printAt = .38;
+  const readAt = printAt + spec.seconds + 1.57;
+  const insertAt = readAt + (spec.reaction ? .62 + spec.reaction * .31 : .72);
+  return { ...spec, printAt, readAt, insertAt, duration: insertAt + 2.28 };
+}
+
 export function recordDispatch(completed, quantity) {
   return Math.min(completed + 1, quantity);
 }
@@ -51,8 +59,8 @@ export function pairRate(quantity, completed, override) {
 }
 
 export const pairCues = Object.freeze({
-  loading: 0, cutting: 6, temples: 10, assembly: 14, color: 17,
-  marking: 20.5, inspection: 22, packing: 24, conveyor: 28,
+  loading: 0, cutting: 6, temples: 10, assembly: 15.2, color: 20,
+  marking: 26.4, inspection: 28, packing: 30, conveyor: 34,
 });
 
 const pairPhases = Object.entries(pairCues);

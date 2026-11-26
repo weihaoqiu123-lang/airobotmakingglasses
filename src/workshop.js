@@ -171,8 +171,9 @@ function roundBot(parent) {
   faceStyle(80);
   rod(head, [[-.31, .34, -.06], [-.37, .53, -.087], [-.42, .65, -.086]], .028, graphite);
   ball(head, .078, mint, [-.42, .65, -.086]);
-  const armLeft = robotArm(robot, -1);
-  const armRight = robotArm(robot, 1);
+  // With +Z forward, the robot's right side is -X.
+  const armLeft = robotArm(robot, 1);
+  const armRight = robotArm(robot, -1);
   const reaction = add(robot, [.45, 2.78, .36]);
   const alert = canvasPlane(reaction, [96, 96], [.49, .49], [0, 0, 0]);
   alert.draw(ctx => {
@@ -194,7 +195,7 @@ function roundBot(parent) {
 
 function robotArm(robot, side) {
   const shoulder = v(side * .54, 1.38, .018);
-  const left = side < 0;
+  const right = side < 0;
   ball(robot, .173, graphite, shoulder.toArray());
   const upper = cylinder(robot, .142, 1, shell, [0, 0, 0], .117);
   const under = cylinder(robot, .12, 1, shell, [0, 0, 0], .091);
@@ -206,7 +207,7 @@ function robotArm(robot, side) {
     const finger = box(gripper, [.08, .075, .189], [digit * .095, -.074, .106], graphite, .028);
     finger.rotation.y = digit * .2;
   }
-  const hand = v(side * .83, .78, left ? .22 : .45);
+  const hand = v(side * .83, .78, right ? .45 : .22);
   const goal = v(0, 0, 0);
   const elbow = v(0, 0, 0);
   function align(arm, a, b) {
@@ -217,7 +218,7 @@ function robotArm(robot, side) {
   }
   function update() {
     elbow.copy(shoulder).lerp(hand, .5);
-    elbow.x += side * (left ? .18 : .08);
+    elbow.x += side * (right ? .08 : .18);
     elbow.y -= .17;
     elbow.z -= .12;
     align(upper, shoulder, elbow);
@@ -225,7 +226,7 @@ function robotArm(robot, side) {
     elbowJoint.position.copy(elbow);
     wrist.position.copy(hand);
     gripper.position.copy(hand);
-    gripper.rotation.z = left ? -.12 : (hand.y - 1.08) * .35;
+    gripper.rotation.z = right ? (1.08 - hand.y) * .35 : .12;
   }
   update();
   return { hand, gripper, update };
@@ -457,18 +458,30 @@ function toolStation(scene) {
   box(jig, [.58, .39, .61], [0, .21, 0], trim, .044);
   box(jig, [.72, .07, .64], [0, .42, .11], dark, .028);
   box(jig, [.71, .022, .049], [0, .457, .428], mint, .009);
-  const gun = add(scene, [-1.53, .847, .98]);
-  gun.userData.parked = gun.position.clone();
-  box(scene, [.26, .65, .31], [-1.53, .487, .98], trim, .028);
-  box(scene, [.29, .055, .33], [-1.53, .802, .98], graphite, .023);
-  box(gun, [.28, .135, .118], [0, .065, 0], green, .031);
-  box(gun, [.092, .132, .108], [-.081, -.029, 0], graphite, .029);
-  box(gun, [.094, .047, .071], [.151, .065, 0], silver, .016);
-  const mist = new T.MeshBasicMaterial({color:'#85d7ed', transparent:true, opacity:0, depthWrite:false});
-  const cone = mesh(gun, new T.ConeGeometry(.14, .61, 18, 1, true), mist, .495, .065, 0);
+  const guns = {
+    left: sprayGun(scene, [-.40, 1.075, .91], green, true),
+    right: sprayGun(scene, [-1.52, .92, 2.96], pink),
+  };
+  return { drawer, billet, scraps, guns };
+}
+
+function sprayGun(scene, parked, finish, mounted = false) {
+  const [x, y, z] = parked;
+  const gun = add(scene, parked);
+  if (mounted) {
+    box(scene, [.29, .055, .42], [x, y - .057, z - .11], graphite, .023);
+  } else {
+    box(scene, [.23, y - .07, .28], [x, (y - .07) / 2, z], trim, .027);
+    box(scene, [.29, .055, .33], [x, y - .057, z], graphite, .023);
+  }
+  box(gun, [.30, .13, .116], [0, .061, 0], finish, .03);
+  box(gun, [.098, .136, .106], [-.078, -.025, 0], graphite, .029);
+  box(gun, [.1, .052, .075], [.156, .061, 0], silver, .016);
+  const mist = new T.MeshBasicMaterial({ color: '#86e3ea', transparent: true, opacity: 0, depthWrite: false });
+  const cone = mesh(gun, new T.ConeGeometry(.118, .72, 18, 1, true), mist, .56, .061, 0);
   cone.rotation.z = Math.PI / 2;
   cone.castShadow = false;
-  return { drawer, billet, scraps, gun, mist };
+  return { gun, parked: gun.position.clone(), mist };
 }
 
 function city(parent) {

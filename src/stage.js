@@ -2,9 +2,9 @@ import * as T from 'three';
 import { gsap } from 'gsap';
 import { box, disposeModel, drawFlatPreview, makeCutScore, makeGlasses } from './glasses.js';
 import { buildWorkshop, dockPoint, home } from './workshop.js';
-import { animatePair, animateReceipt, createRobotMotion, dockApproach, framingHome, receiptTiming, resetPair, walk } from './choreography.js';
+import { animatePair, animateReceipt, createRobotMotion, dockApproach, framingHome, resetPair, walk } from './choreography.js';
 import { createPhotoStudio } from './photo.js';
-import { defaultDesign, pairPhaseAt, pairRate, pairSeconds, rechargeSeconds, recordDispatch } from './order.js';
+import { defaultDesign, pairPhaseAt, pairRate, pairSeconds, receiptTiming, rechargeSeconds, recordDispatch } from './order.js';
 
 function rendererFor(host) {
   const attributes = { alpha: false, antialias: true, preserveDrawingBuffer: true };
@@ -67,12 +67,12 @@ function createProductStage() {
 function idleAnimation(actors, motion) {
   const idle = gsap.timeline({ repeat: -1, paused: true });
   const head = actors.head.rotation;
-  const hand = motion.baseHand;
+  const hand = motion.right.pose;
   idle.to(head, { y: .37, x: -.07, duration: 1.16, ease: 'sine.inOut' })
-    .to(hand, { x: .93, y: 1.14, z: .59, duration: .96 }, .35)
+    .to(hand, { x: -.93, y: 1.14, z: .59, duration: .96 }, .35)
     .to(head, { y: -.27, x: .08, duration: 1.25, ease: 'sine.inOut' }, 1.3)
-    .to(hand, { x: .86, y: .79, z: .44, duration: 1.12 }, 1.65)
-    .to(actors.armLeft.hand, { y: .91, z: .34, duration: .69, repeat: 1, yoyo: true }, 2.3)
+    .to(hand, { x: -.86, y: .79, z: .44, duration: 1.12 }, 1.65)
+    .to(motion.left.pose, { y: .91, z: .34, duration: .69, repeat: 1, yoyo: true }, 2.3)
     .call(actors.faceStyle, [9], 2.7)
     .call(actors.faceStyle, [80], 2.86)
     .to(head, { y: 0, x: 0, duration: 1.05 }, 3.34);
@@ -124,6 +124,7 @@ export function createStage(host, onRobotState) {
       workshopCamera.zoom = framing.zoom;
       workshopCamera.updateProjectionMatrix();
     }
+    workshopCamera.position.y = 4.4 + framing.lift;
     workshopCamera.lookAt(framing.x, framing.y, framing.z);
     renderer.render(workshop, workshopCamera);
   }
@@ -323,8 +324,8 @@ export function createStage(host, onRobotState) {
     walk(robotTravel, actors, motion, [dockPoint[0], dockPoint[1] + .032, dockPoint[2]], -Math.PI, 4.18, 1.12);
     robotTravel.to(actors.robot.rotation, {y:.02,duration:.42},5.32)
       .to(actors.head.rotation, {y:.02,x:.12,duration:.39},5.32)
-      .to(motion.baseHand,{x:.57,y:.82,z:.30,duration:.36},5.36)
-      .to(actors.armLeft.hand,{x:-.57,y:.82,z:.30,duration:.36},5.36)
+      .to(motion.right.pose,{x:-.57,y:.82,z:.30,duration:.36},5.36)
+      .to(motion.left.pose,{x:.57,y:.82,z:.30,duration:.36},5.36)
       .to(actors.shutter.scale,{y:1,duration:.78,ease:'power2.inOut'},5.83);
   }
 
@@ -345,7 +346,7 @@ export function createStage(host, onRobotState) {
     motion?.clear();
     actors?.faceStyle(80);
     if (actors) resetPair(actors, product);
-    Object.assign(framing, { x: -1.61, y: 1.57, z: .28, zoom: 1.15 });
+    Object.assign(framing, { x: -1.61, y: 1.57, z: .76, zoom: 1.23, lift: 0 });
     notify('working');
     const timing = receiptTiming(job.order.design.quantity);
     let lastPart;
