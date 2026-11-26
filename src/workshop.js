@@ -140,7 +140,7 @@ function roundBot(parent) {
     box(head, [.155, .079, .014], [side * .49, -.132, .351], green, .009);
   }
   const face = canvasPlane(head, [600, 250], [.88, .365], [0, -.018, .481]);
-  const faceStyle = eyeHeight => face.draw((ctx, width, height) => {
+  const faceStyle = (eyeHeight, surprise = false) => face.draw((ctx, width, height) => {
     const sheen = ctx.createLinearGradient(0, 0, 0, height);
     sheen.addColorStop(0, '#6ba9d071');
     sheen.addColorStop(.64, '#0b4e7366');
@@ -161,8 +161,11 @@ function roundBot(parent) {
     ctx.lineWidth = 9;
     ctx.lineCap = 'round';
     ctx.strokeStyle = '#8ffef4';
-    ctx.moveTo(275, 154);
-    ctx.quadraticCurveTo(301, 181, 327, 154);
+    if (surprise) ctx.ellipse(301, 173, eyeHeight * .11, eyeHeight * .17, 0, 0, 2 * Math.PI);
+    else {
+      ctx.moveTo(275, 154);
+      ctx.quadraticCurveTo(301, 181, 327, 154);
+    }
     ctx.stroke();
   });
   faceStyle(80);
@@ -170,7 +173,23 @@ function roundBot(parent) {
   ball(head, .078, mint, [-.42, .65, -.086]);
   const armLeft = robotArm(robot, -1);
   const armRight = robotArm(robot, 1);
-  return { robot, legs, chest, head, faceStyle, armLeft, armRight };
+  const reaction = add(robot, [.45, 2.78, .36]);
+  const alert = canvasPlane(reaction, [96, 96], [.49, .49], [0, 0, 0]);
+  alert.draw(ctx => {
+    ctx.fillStyle = '#100d28';
+    ctx.strokeStyle = '#fd84c9';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(7, 7, 82, 82, 20);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffa4de';
+    ctx.font = '900 66px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('!', 48, 72);
+  });
+  reaction.visible = false;
+  return { robot, legs, chest, head, faceStyle, armLeft, armRight, reaction };
 }
 
 function robotArm(robot, side) {
@@ -215,7 +234,9 @@ function robotArm(robot, side) {
 function eyeFactory(parent) {
   const unit = add(parent, [.55, .16, -.28]);
   box(unit, [3.16, .29, 2.04], [0, .15, 0], graphite, .12);
-  box(unit, [3.04, .65, 1.88], [0, .57, 0], shell, .19);
+  box(unit, [3.04, .18, 1.88], [0, .79, 0], shell, .077);
+  for (const x of [-1.31, 1.30]) box(unit, [.44, .57, 1.88], [x, .5, 0], shell, .066);
+  box(unit, [1.75, .52, .087], [-.23, .55, -.92], dark, .04);
   box(unit, [2.83, .095, 1.74], [0, .91, 0], silver, .043);
   box(unit, [2.885, .057, .064], [0, .772, .918], green, .025);
   box(unit, [2.84, 2.31, .34], [0, 1.99, -.725], shell, .17);
@@ -293,15 +314,18 @@ function ticketPrinter(parent) {
   box(printer, [.74, .132, .71], [0, .06, 0], graphite, .063);
   box(printer, [.575, .795, .54], [0, .499, 0], trim, .097);
   box(printer, [.706, .293, .673], [0, .961, .032], shell, .086);
-  box(printer, [.44, .031, .077], [0, 1.108, .093], graphite, .008);
+  box(printer, [.44, .036, .109], [0, 1.105, .348], graphite, .008);
   box(printer, [.199, .032, .027], [-.09, .967, .373], green, .009);
   label(printer, 'ORDER', [.4, .142], [-.005, .844, .344]);
-  const ticket = add(parent, [-1.04, 1.22, .864]);
-  box(ticket, [.382, .507, .012], [0, .183, 0], metal('#fffce9', { roughness: .83, metalness: 0 }), .005);
-  const print = canvasPlane(ticket, [325, 425], [.351, .461], [0, .184, .01]);
-  const printTicket = order => print.draw(ctx => {
+  const ticket = add(parent, [-1.04, 1.276, 1.169]);
+  box(ticket, [.38, .368, .012], [0, -.184, 0], metal('#fffce9', { roughness: .83, metalness: 0 }), .005);
+  const print = canvasPlane(ticket, [325, 625], [.351, .351], [0, -.184, .01]);
+  const printTicket = (order, spec) => print.draw(ctx => {
+    ctx.save();
     ctx.fillStyle = '#2b3525';
     ctx.font = 'bold 40px monospace';
+    const height = 1 / spec.length;
+    ctx.scale(1, height);
     ctx.fillText('FORM.', 17, 52);
     ctx.fillRect(17, 76, 290, 4);
     ctx.font = 'bold 29px monospace';
@@ -310,7 +334,10 @@ function ticketPrinter(parent) {
       'LOGO / ' + (order.design.logo ? 'YES' : '—'), 'QTY / ' + order.design.quantity,
     ];
     lines.forEach((line, index) => ctx.fillText(line, 17, 125 + index * 43));
-    for (let i = 0; i < 29; i++) ctx.fillRect(18 + i * 10, 361, 3 + i % 4, 29);
+    for (let i = 0; i < 29; i++) ctx.fillRect(18 + i * 10, 471, 3 + i % 4, 44);
+    ctx.font = 'bold 51px monospace';
+    ctx.fillText('×' + order.design.quantity, 17, 420);
+    ctx.restore();
   });
   ticket.visible = false;
   return { ticket, printTicket };
@@ -333,29 +360,70 @@ function packingStation(parent) {
   box(lid, [1.135, .053, .85], [0, .015, .408], edge, .029);
   box(lid, [.258, .055, .846], [-.343, .02, .407], green, .017);
   box(lid, [.099, .057, .845], [-.15, .02, .407], green, .017);
+  const lidGrip = add(lid, [-.36, .055, .755]);
   lid.rotation.x = -1.26;
-  return { lid };
+  const conveyor = add(parent, [4.46, 1.20, .655]);
+  box(conveyor, [3.24, .13, 1.07], [0, 0, 0], graphite, .04);
+  for (const z of [-.51, .51]) {
+    box(conveyor, [3.22, .045, .041], [0, .06, z], trim, .015);
+  }
+  const rollers = Array.from({ length: 15 }, (_, i) => {
+    const roll = cylinder(conveyor, .052, .95, i % 2 === 0 ? silver : shell, [-1.52 + i * .219, .036, 0], .052, 14);
+    roll.rotation.x = Math.PI / 2;
+    return roll;
+  });
+  for (const x of [.37, 1.46]) {
+    box(conveyor, [.125, 1.12, .59], [x, -.57, 0], trim, .025);
+  }
+  const outfeed = add(conveyor, [.68, .074, 0]);
+  box(outfeed, [.42, .09, 1.11], [0, .85, 0], shell, .024);
+  for (const z of [-.53, .53]) box(outfeed, [.42, .82, .077], [0, .38, z], trim, .018);
+  box(outfeed, [.32, .022, .042], [0, .79, .567], mint, .009);
+  label(outfeed, 'OUT', [.34, .14], [0, .86, .564]);
+  return { lid, lidGrip, carton, rollers };
 }
 
 export const home = [-2.35, .17, .08];
-export const dockPoint = [-3.84, .17, -.75];
+export const dockPoint = [-4.22, .22, -.81];
 
 function chargingStation(parent) {
   const dock = add(parent, dockPoint);
-  box(dock, [1.81, .12, 1.27], [0, .04, .05], graphite, .055);
-  box(dock, [1.72, 2.88, .25], [0, 1.48, -.49], trim, .12);
-  box(dock, [1.87, .4, 1.23], [0, 2.92, -.03], shell, .078);
+  box(dock, [2.12, .12, 1.51], [0, 0, .09], graphite, .055);
+  box(dock, [2.08, 3.02, .18], [0, 1.51, -.63], trim, .071);
+  box(dock, [2.22, .4, 1.48], [0, 3.14, .09], shell, .078);
   const charge = pink.clone();
   charge.emissiveIntensity = .35;
   for (const side of [-1, 1]) {
-    box(dock, [.16, 2.72, 1.03], [side * .83, 1.44, -.057], graphite, .048);
-    box(dock, [.043, 2.46, .03], [side * .764, 1.44, .472], charge, .01);
-    box(dock, [.047, .035, .86], [side * .70, .117, .066], mint, .013);
+    box(dock, [.13, 2.99, 1.44], [side * 1.027, 1.505, .008], graphite, .033);
+    box(dock, [.043, 2.74, .03], [side * .989, 1.49, .788], charge, .01);
+    box(dock, [.047, .023, .98], [side * .82, .069, .131], mint, .013);
   }
-  box(dock, [1.68, .025, .063], [0, 2.735, .56], charge, .012);
-  label(dock, 'CHARGE / 01', [1.27, .29], [0, 2.955, .599], '#ffa8d8');
+  box(dock, [1.9, .025, .063], [0, 2.94, .8], charge, .012);
+  label(dock, 'CHARGE / 01', [1.49, .29], [0, 3.15, .846], '#ffa8d8');
   const bars = Array.from({ length: 5 }, (_, i) =>
-    box(dock, [.104, .064, .035], [-.246 + i * .123, 2.774, .59], charge.clone(), .009));
+    box(dock, [.104, .064, .035], [-.246 + i * .123, 2.993, .842], charge.clone(), .009));
+  const shutter = add(dock, [0, 3.0, .755]);
+  const slats = 12;
+  for (let index = 0; index < slats; index++) {
+    box(shutter, [1.92, .242, .101], [0, -.122 - index * .244, 0], index % 2 ? trim : graphite, .009);
+  }
+  const doorScreen = canvasPlane(shutter, [400, 174], [1.09, .47], [0, -1.27, .061]);
+  function setDoorDisplay(remaining) {
+    doorScreen.draw(ctx => {
+      ctx.fillStyle = '#100e25';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, 400, 174, 22);
+      ctx.fill();
+      ctx.fillStyle = '#ffa1d8';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 48px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
+      ctx.fillText(remaining == null ? '充电仓' : '充电中', 200, 71);
+      ctx.font = 'bold 36px monospace';
+      ctx.fillText(remaining == null ? 'POWER BAY' : '00:' + String(remaining).padStart(2, '0'), 200, 134);
+    });
+  }
+  shutter.scale.y = .016;
+  setDoorDisplay(null);
   const light = new T.PointLight('#eb3fae', 0, 2.6);
   light.position.set(0, 1.95, .44);
   dock.add(light);
@@ -367,7 +435,40 @@ function chargingStation(parent) {
     });
   }
   chargeLevel(0, false);
-  return chargeLevel;
+  return { shutter, chargeLevel, setDoorDisplay };
+}
+
+function toolStation(scene) {
+  const stock = metal('#a4a9b7', { roughness: .58 });
+  const drawer = add(scene, [.32, .565, -.16]);
+  box(drawer, [1.54, .085, 1.37], [0, 0, 0], dark, .026);
+  for (const x of [-.752, .752]) box(drawer, [.045, .126, 1.33], [x, .064, 0], silver, .013);
+  box(drawer, [1.57, .31, .087], [0, .048, .69], trim, .027);
+  box(drawer, [.41, .065, .105], [-.37, .086, .78], silver, .023);
+  label(drawer, 'STOCK', [.36, .12], [.42, .06, .741], '#8cf7e9');
+  for (const x of [-.54, .54]) {
+    const rail = box(scene, [.048, .052, 1.52], [.32 + x, .51, .65], graphite, .009);
+    rail.castShadow = false;
+  }
+  const billet = box(scene, [1.30, .074, 1.30], [.32, .654, -.16], stock, .019);
+  const scraps = [-1, 1].map((side, index) =>
+    box(scene, [.74, .071, .132], [.32, 1.23, index ? .87 : .02], stock, .018));
+  const jig = add(scene, [-.93, .17, 1.05]);
+  box(jig, [.58, .39, .61], [0, .21, 0], trim, .044);
+  box(jig, [.72, .07, .64], [0, .42, .11], dark, .028);
+  box(jig, [.71, .022, .049], [0, .457, .428], mint, .009);
+  const gun = add(scene, [-1.53, .847, .98]);
+  gun.userData.parked = gun.position.clone();
+  box(scene, [.26, .65, .31], [-1.53, .487, .98], trim, .028);
+  box(scene, [.29, .055, .33], [-1.53, .802, .98], graphite, .023);
+  box(gun, [.28, .135, .118], [0, .065, 0], green, .031);
+  box(gun, [.092, .132, .108], [-.081, -.029, 0], graphite, .029);
+  box(gun, [.094, .047, .071], [.151, .065, 0], silver, .016);
+  const mist = new T.MeshBasicMaterial({color:'#85d7ed', transparent:true, opacity:0, depthWrite:false});
+  const cone = mesh(gun, new T.ConeGeometry(.14, .61, 18, 1, true), mist, .495, .065, 0);
+  cone.rotation.z = Math.PI / 2;
+  cone.castShadow = false;
+  return { drawer, billet, scraps, gun, mist };
 }
 
 function city(parent) {
@@ -406,7 +507,7 @@ export function buildWorkshop(scene) {
   grid.material.transparent = true;
   grid.position.y = .006;
   scene.add(grid);
-  const base = box(scene, [9.14, .14, 4.22], [-.53, .072, .12], metal('#243555', { roughness: .55 }), .1);
+  const base = box(scene, [12.4, .14, 4.5], [.22, .072, .32], metal('#243555', { roughness: .55 }), .1);
   base.castShadow = false;
   shadow(scene, -2.35, .1, 2.6, 1.65, .35).position.y = .151;
   shadow(scene, .55, -.14, 4.6, 2.8, .41).position.y = .151;
@@ -421,7 +522,6 @@ export function buildWorkshop(scene) {
   const machine = eyeFactory(scene);
   const printing = ticketPrinter(scene);
   const packing = packingStation(scene);
-  const chargeLevel = chargingStation(scene);
-  const billet = box(scene, [1.29, .133, .45], [.24, 1.182, 1.29], metal('#9a97aa', { roughness: .62 }), .045);
-  return { ...bot, ...machine, ...printing, ...packing, chargeLevel, billet };
+  const charging = chargingStation(scene);
+  return { ...bot, ...machine, ...printing, ...packing, ...charging, ...toolStation(scene) };
 }

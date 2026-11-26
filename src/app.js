@@ -1,6 +1,6 @@
 import './style.css';
 import { createStage } from './stage.js';
-import { colors, createOrder, defaultDesign, fabricationAt, frames, maxQuantity, productionSeconds, stageAt, unitPrice } from './order.js';
+import { colors, createOrder, defaultDesign, frames, maxQuantity, unitPrice } from './order.js';
 
 const byId = id => document.getElementById(id);
 const content = byId('custom-content');
@@ -19,18 +19,23 @@ const pad = value => String(value).padStart(2, '0');
 const heading = (title, helper) => '<h3 tabindex="-1">' + title + '</h3><p class="helper">' + helper + '</p>';
 
 const production = {
+  waiting: { tag: 'ORDER QUEUED', title: '等待机器人出仓', detail: '开门出仓后开始出票', screen: 'QUEUED' },
   ticket: { tag: 'ORDER RECEIVED', title: '工坊收到订单', detail: '打印小票，机器人取单', screen: 'ORDER IN' },
-  making: { tag: 'FABRICATION', title: '眼镜制作中', detail: '镜框成型，印制镜腿 Logo', screen: 'MAKING' },
-  packing: { tag: 'PACKING', title: '成品出仓并装盒', detail: '机器人取走眼镜，折叠镜腿并合盖', screen: 'PACKING' },
-  complete: { tag: 'ORDER COMPLETE', title: '你的眼镜已装盒', detail: '可以重新查看并保存成品图', screen: 'COMPLETE' },
+  making: { tag: 'FABRICATION', title: '眼镜制作中', detail: '机器人加工当前眼镜', screen: 'MAKING' },
+  packing: { tag: 'PACKING', title: '成品装盒与出料', detail: '机器人放入眼镜，合盖后送上带', screen: 'PACKING' },
+  complete: { tag: 'ORDER COMPLETE', title: '全部眼镜已出料', detail: '可以重新查看并保存成品图', screen: 'COMPLETE' },
 };
 
 const fabrication = {
-  loading: ['BLANK LOADING', '机器人将未加工的原坯放入机台', 'LOADING'],
-  cutting: ['FRAME CUTTING', '从原坯切出所选镜框轮廓', 'CUTTING'],
-  color: ['COLOR FINISH', '按订单上色，装入透明镜片', 'COLOR'],
-  marking: ['TEMPLE MARKING', '机器人操作印标，Logo 出现在镜腿上', 'MARKING'],
-  inspection: ['QUALITY CHECK', '机器人检查成品并准备取出', 'QA CHECK'],
+  loading: ['STOCK DRAWER', '拉开底部抽屉，夹起方形板材', 'LOADING'],
+  cutting: ['FRAME CUTTING', '切出订单指定的镜框轮廓', 'CUTTING'],
+  temples: ['TEMPLE FORMING', '用余料分别加工两根镜腿', 'TEMPLES'],
+  assembly: ['ASSEMBLY', '把左、右镜腿装到镜框上', 'ASSEMBLY'],
+  color: ['SPRAY FINISH', '喷涂镜框和镜腿，原料色逐步变为订单颜色', 'COLOR'],
+  marking: ['TEMPLE MARKING', '印制镜腿 Logo', 'MARKING'],
+  inspection: ['QUALITY CHECK', '机器人举起眼镜，转动检查', 'QA CHECK'],
+  packing: ['PACKING', '折叠镜腿、放入盒内并合盖', 'PACKING'],
+  conveyor: ['OUTFEED', '闭合的盒子经传送带送出', 'OUTFEED'],
 };
 
 let design = { ...defaultDesign };
@@ -44,14 +49,14 @@ let step = 0;
 let visited = 0;
 let display = 'workshop';
 let paused = false;
-let accelerated = false;
+let playbackRate = 1;
 let order;
 let pendingOrder;
 let confirmedImage;
 let currentCue;
 let currentFabrication;
 let progressNodes;
-let lastSecond;
+let shownCompleted;
 
 if (stage.enabled) {
   stageVisual.dataset.scene = 'webgl';
@@ -87,7 +92,7 @@ function describeDesign() {
   } else if (display === 'photo') {
     setCaption('PRODUCT IMAGE', stage.enabled ? '写实商品图' : '二维成品图', '根据当前选配生成的效果图', '成品预览', title);
   } else if (step === 0 && visited === 0 && design.frame === defaultDesign.frame) {
-    setCaption('WORKSHOP', '工坊待机中', '机台已备好未加工的原坯', '工坊就绪', '等待定制');
+    setCaption('WORKSHOP', '工坊待机中', '原材料板存放在机台底部抽屉', '工坊就绪', '等待定制');
   } else {
     const titles = ['镜框样式已更新', '镜框配色已更新', '正在定制镜腿标识', '机器已读取数量'];
     setCaption('WORKSHOP', titles[step], '提交订单后开始制作', '已同步设计', title);
@@ -227,21 +232,24 @@ function renderReview() {
 function renderProduction() {
   content.innerHTML = heading('制作进行中', '订单 ' + order.id + ' · ' + order.design.quantity + ' 副') +
     '<ol class="production-list">' + [
-      ['ticket', '打印小票，机器人接单'], ['making', '原坯成型 · 上色 · 表面处理'], ['packing', '机器人取出成品并装盒'],
+      ['ticket', '出单与取票'], ['making', '取料 · 切框 · 镜腿组装 · 上色'], ['packing', '装盒 · 合盖 · 出料'],
     ].map(([key, label]) => '<li data-cue="' + key + '">' + label + '</li>').join('') + '</ol>' +
-    '<div class="progress-row"><progress id="production-progress" max="60" value="0" aria-label="制作进度"></progress>' +
-    '<span id="production-time">01:00</span></div>';
+    '<div class="progress-row"><progress id="production-progress" max="' + order.design.quantity +
+    '" value="0" aria-label="制作进度"></progress></div>' +
+    '<p class="production-count" id="production-count">制作进度 0 / ' + order.design.quantity + '</p>';
   actions.innerHTML = button('speed', '4 倍速观看', 'secondary') +
-    '<p class="custom-note">制作演示约 60 秒</p>';
+    '<p class="custom-note" id="production-note">每盒完全离开出料口后，计为完成一副</p>';
   progressNodes = {
     bar: byId('production-progress'),
-    time: byId('production-time'),
+    count: byId('production-count'),
     cues: [...content.querySelectorAll('[data-cue]')],
   };
 }
 
 function renderComplete() {
-  content.innerHTML = heading('制作演示完成', '订单 ' + order.id + ' · 你的眼镜已装盒。') + previewMarkup() + designSummary();
+  content.innerHTML = heading('制作演示完成', '订单 ' + order.id + ' · 所有眼镜已装盒出料。') +
+    '<p class="production-count" id="production-count">制作进度 ' + order.design.quantity + ' / ' +
+    order.design.quantity + '</p>' + previewMarkup() + designSummary();
   refreshPreview();
   byId('order-selection').textContent = (design.logoName || '无 Logo') + ' · ' + design.quantity + ' 副';
   actions.innerHTML = '<a id="download-preview" class="button secondary" download="form-optics-' +
@@ -378,23 +386,40 @@ function openReview() {
   render(true);
 }
 
-function showCue(cue, detailCue) {
+function showCue(cue, detailCue, snapshot) {
   const item = production[cue];
   const info = order.id + ' · ' + order.design.quantity + ' 副';
   const [tag, hint, screen] = fabrication[detailCue] ?? [item.tag, item.detail, item.screen];
-  const detail = detailCue === 'marking' && !order.design.logo ? '抛光镜腿，保留素面外观' : hint;
+  const ticketDetail = {
+    print: '打印小票 · ' + (snapshot?.receipt?.seconds ?? 1.8).toFixed(2) + ' 秒',
+    take: '机器人取走小票',
+    read: '机器人读到订单数量 ' + order.design.quantity + ' 副',
+    insert: '机器人将小票插入机器',
+  };
+  const detail = cue === 'ticket' ? ticketDetail[snapshot?.part ?? 'print'] :
+    detailCue === 'marking' && !order.design.logo ? '检查镜腿表面，保留素面外观' : hint;
   stage.status(screen, order);
   setCaption(tag, item.title, detail, item.title, info);
   byId('announcement').textContent = item.title;
 }
 
-function syncProgress(seconds) {
-  const cue = stageAt(seconds);
-  const detail = cue === 'complete' ? 'complete' : fabricationAt(seconds);
+function syncProgress(snapshot) {
+  const { phase: detail, completed, total, rate, part, receipt } = snapshot;
+  const cue = ['loading','cutting','temples','assembly','color','marking','inspection'].includes(detail) ? 'making' :
+    detail === 'packing' || detail === 'conveyor' ? 'packing' : detail;
+  if (part) stageVisual.dataset.receipt = part;
+  else delete stageVisual.dataset.receipt;
+  if (receipt) {
+    stageVisual.dataset.ticketLength = receipt.length;
+    stageVisual.dataset.ticketSeconds = receipt.seconds;
+    stageVisual.dataset.reaction = receipt.reaction;
+  }
   if (cue !== currentCue || detail !== currentFabrication) {
     currentFabrication = detail;
     stageVisual.dataset.fabrication = detail;
-    showCue(cue, detail);
+    showCue(cue, detail, snapshot);
+  } else if (cue === 'ticket') {
+    showCue(cue, detail, snapshot);
   }
   if (cue !== currentCue) {
     currentCue = cue;
@@ -403,12 +428,14 @@ function syncProgress(seconds) {
       node.dataset.state = cue === 'complete' || index < activeIndex ? 'done' : index === activeIndex ? 'current' : 'waiting';
     });
   }
-  const remaining = Math.ceil(productionSeconds - seconds);
-  if (remaining !== lastSecond) {
-    lastSecond = remaining;
-    progressNodes.bar.value = productionSeconds - remaining;
-    progressNodes.time.textContent = pad(Math.floor(remaining / 60)) + ':' + pad(remaining % 60);
+  if (completed !== shownCompleted) {
+    shownCompleted = completed;
+    progressNodes.bar.value = completed;
+    progressNodes.count.textContent = '制作进度 ' + completed + ' / ' + total;
   }
+  playbackRate = rate;
+  byId('speed').textContent = rate === 4 ? '恢复原速' : '4 倍速观看';
+  byId('production-note').textContent = rate === 4 ? '正在以 4 倍速播放逐副制作' : '每盒完全离开出料口后，计为完成一副';
 }
 
 function startProduction() {
@@ -419,12 +446,11 @@ function startProduction() {
   phase = 'production';
   currentCue = null;
   currentFabrication = null;
-  lastSecond = null;
-  accelerated = false;
+  shownCompleted = null;
+  playbackRate = 1;
   setPaused(false);
   selectView('workshop');
   render(true);
-  syncProgress(0);
   stage.start(order, {
     update: syncProgress,
     complete() {
@@ -451,6 +477,7 @@ function restart() {
   order = undefined;
   confirmedImage = undefined;
   delete stageVisual.dataset.fabrication;
+  for (const key of ['receipt', 'ticketLength', 'ticketSeconds', 'reaction']) delete stageVisual.dataset[key];
   stage.setDesign(design);
   selectView('workshop');
   render(true);
@@ -520,9 +547,9 @@ actions.addEventListener('click', event => {
       break;
     }
     case 'speed':
-      accelerated = !accelerated;
-      stage.speed(accelerated ? 4 : 1);
-      byId('speed').textContent = accelerated ? '恢复正常速度' : '4 倍速观看';
+      playbackRate = playbackRate === 4 ? 1 : 4;
+      stage.speed(playbackRate);
+      byId('speed').textContent = playbackRate === 4 ? '恢复原速' : '4 倍速观看';
       break;
     case 'restart':
       restart();

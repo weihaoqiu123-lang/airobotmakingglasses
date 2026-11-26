@@ -55,6 +55,21 @@ export function textureFromCanvas(canvas) {
   return texture;
 }
 
+export function makeCutScore(frame) {
+  const lines = new T.Group();
+  const material = new T.LineBasicMaterial({ color: '#9dfff3', transparent: true, opacity: 0, depthWrite: false });
+  const spacing = frame === 'oval' ? .55 : .519;
+  for (const side of [-1, 1]) {
+    for (const edge of [1, .82]) {
+      const points = outline(frame, edge).map(point =>
+        new T.Vector3((side * spacing + point.x) * .59, .044, -point.y * .59));
+      lines.add(new T.LineLoop(new T.BufferGeometry().setFromPoints(points), material));
+    }
+  }
+  lines.userData.material = material;
+  return lines;
+}
+
 export function makeGlasses(design, logoImage, { photo = false } = {}) {
   const model = new T.Group();
   model.userData.temples = [];
@@ -121,7 +136,7 @@ export function disposeModel(model) {
   const geometries = new Set();
   const materials = new Set();
   model.traverse(part => {
-    if (!part.isMesh) return;
+    if (!part.isMesh && !part.isLine) return;
     geometries.add(part.geometry);
     materials.add(part.material);
   });

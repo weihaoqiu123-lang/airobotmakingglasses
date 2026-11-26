@@ -1,9 +1,14 @@
 import { Color, Vector3 } from 'three';
-import { colors, fabricationCues as cue } from './order.js';
-import { home } from './workshop.js';
+import { colors, pairCues as cue, receiptFor } from './order.js';
+import { dockPoint, home } from './workshop.js';
 
 const neutral = new Color('#87949d');
 const parkedHand = [.83, .78, .45];
+export const framingHome = { x: .04, y: 1.53, z: .20, zoom: 1 };
+const stockClosed = -.16;
+const stockOpen = 1.39;
+const workPosition = [-1.09, .17, 1.51];
+const jigPositions = [[-.98, .638, 1.17], [-.88, .638, 1.34]];
 
 export function createRobotMotion(actors) {
   const baseHand = new Vector3(...parkedHand);
@@ -28,7 +33,7 @@ export function createRobotMotion(actors) {
       });
       const hand = actors.armRight.hand.copy(baseHand);
       if (grip.target && grip.weight) {
-        targetPosition.copy(grip.target.position).add(grip.offset);
+        grip.target.getWorldPosition(targetPosition).add(grip.offset);
         actors.robot.worldToLocal(targetPosition);
         hand.lerp(targetPosition, grip.weight);
       } else {
@@ -42,131 +47,225 @@ export function createRobotMotion(actors) {
 
 export function walk(timeline, actors, motion, to, turn, time, duration) {
   timeline
-    .to(actors.robot.rotation, { y: turn, duration: .34, ease: 'sine.inOut' }, time)
-    .to(motion.gait, { weight: 1, duration: .2 }, time)
-    .to(motion.gait, { phase: '+=' + (Math.max(2, Math.round(duration * 2.8)) * Math.PI), duration, ease: 'none' }, time)
+    .to(actors.robot.rotation, { y: turn, duration: Math.min(.32, duration), ease: 'sine.inOut' }, time)
+    .to(motion.gait, { weight: 1, duration: .18 }, time)
+    .to(motion.gait, { phase: '+=' + (Math.max(2, Math.round(duration * 3.2)) * Math.PI), duration, ease: 'none' }, time)
     .to(actors.robot.position, { x: to[0], y: to[1], z: to[2], duration, ease: 'power1.inOut' }, time)
-    .to(motion.gait, { weight: 0, duration: .25 }, time + duration - .25);
+    .to(motion.gait, { weight: 0, duration: .21 }, time + duration - .21);
 }
 
-export function resetMaterial(model, billet) {
-  const { acetate, glass, logoMaterials } = model.userData;
+function gripAt(timeline, motion, target, start, offset, duration = .22) {
+  timeline.call(() => {
+    motion.grip.target = target;
+    motion.grip.offset.set(...offset);
+  }, [], start);
+  timeline.to(motion.grip, { weight: 1, duration }, start);
+}
+
+function releaseAt(timeline, motion, time) {
+  timeline.to(motion.grip, { weight: 0, duration: .19 }, time);
+}
+
+export function resetPair(actors, product, nextBox = false) {
+  const model = product.children[0];
+  if (!model) return;
+  const { acetate, glass, logoMaterials, temples } = model.userData;
+  model.userData.assemblyPoints ??= temples.map(temple => temple.position.clone());
   acetate.color.copy(neutral);
-  acetate.roughness = .68;
+  acetate.roughness = .66;
   glass.opacity = 0;
   logoMaterials.forEach(material => { material.opacity = 0; });
+  temples.forEach((temple, index) => {
+    temple.position.copy(model.userData.assemblyPoints[index]);
+    temple.rotation.set(0, 0, 0);
+    temple.visible = false;
+  });
+  product.visible = false;
+  product.position.set(.32, 1.49, .43);
+  product.rotation.set(0, -.11, 0);
+  product.scale.setScalar(.60);
+  const { billet, drawer, scraps, gun, mist, carton, lid } = actors;
+  drawer.position.z = stockClosed;
   billet.visible = true;
-  billet.position.set(.24, 1.182, 1.29);
+  billet.position.set(.32, .654, stockClosed);
   billet.rotation.set(0, 0, 0);
   billet.scale.setScalar(1);
+  actors.cutScore.userData.material.opacity = 0;
+  scraps.forEach((scrap, index) => {
+    scrap.visible = false;
+    scrap.position.set(.32, 1.24, index ? .88 : .10);
+    scrap.rotation.set(0, 0, 0);
+    scrap.scale.setScalar(1);
+  });
+  gun.position.copy(gun.userData.parked);
+  gun.rotation.set(0, 0, 0);
+  mist.opacity = 0;
+  carton.visible = true;
+  carton.position.x = nextBox ? 2.2 : 0;
+  lid.rotation.x = nextBox ? 0 : -1.35;
+  actors.lever.rotation.x = 0;
+  actors.gantry.position.set(-.23, 2.42, .052);
+  actors.beamMaterial.color.set('#74fff1');
+  actors.beamMaterial.opacity = 0;
+  actors.light.intensity = 0;
 }
 
-export function runChoreography(timeline, actors, motion, product, order, framing) {
-  const { robot, ticket, head, gantry, beamMaterial: beam, lid, billet, lever } = actors;
-  const hand = motion.baseHand;
-  const { acetate, glass, logoMaterials, temples: [leftTemple, rightTemple] } = product.children[0].userData;
+export function receiptTiming(quantity) {
+  const spec = receiptFor(quantity);
+  const printAt = .38;
+  const readAt = printAt + spec.seconds + .96;
+  const insertAt = readAt + (spec.reaction ? .48 + spec.reaction * .31 : .62);
+  return { ...spec, printAt, readAt, insertAt, duration: insertAt + 1.60 };
+}
+
+export function animateReceipt(timeline, actors, motion, order, timing) {
+  const { ticket, robot, head, reaction } = actors;
+  const { printAt, readAt, insertAt, length, seconds, reaction: surprise } = timing;
+  actors.printTicket(order, timing);
+  reaction.visible = false;
+  ticket.position.set(-1.04, 1.276, 1.169);
+  ticket.rotation.set(0, 0, 0);
+  ticket.scale.set(1, .012, 1);
+  const distance = Math.hypot(robot.position.x - home[0], robot.position.z - home[2]);
+  if (distance > .11) walk(timeline, actors, motion, home, .05, 0, .62);
+  timeline.set(ticket, {visible: true}, printAt)
+    .to(ticket.scale, {y:length, duration:seconds, ease:'none'}, printAt)
+    .to(head.rotation, {y:.39, x:.14, duration:.47}, printAt + .12);
+  const takeAt = printAt + seconds;
+  gripAt(timeline, motion, ticket, takeAt, [-.16, -.07, .092], .34);
+  timeline.to(ticket.position, {x:-1.59, y:2.06, z:1.31, duration:.62, ease:'power1.inOut'}, takeAt + .34);
+  if (surprise) {
+    timeline.call(() => actors.faceStyle(86 + surprise * 15, true), [], readAt)
+      .set(reaction, {visible:true}, readAt)
+      .fromTo(reaction.scale, {x:.1,y:.1,z:.1}, {x:.72+surprise*.24,y:.72+surprise*.24,z:.72+surprise*.24,duration:.31,ease:'back.out(2)'}, readAt)
+      .to(head.rotation, {y:surprise > 1 ? -.15 : .23,x:-.13,duration:.38}, readAt)
+      .set(reaction,{visible:false},insertAt)
+      .call(() => actors.faceStyle(80), [], insertAt);
+  } else {
+    timeline.to(head.rotation, {x:.31,duration:.24,yoyo:true,repeat:1}, readAt);
+  }
+  timeline.to(head.rotation,{y:.42,x:.02,duration:.35},insertAt)
+    .to(ticket.position,{x:-.75,y:2.47,z:.672,duration:.69,ease:'power2.inOut'},insertAt)
+    .to(ticket.rotation,{x:-.48,duration:.49},insertAt + .33)
+    .to(ticket.scale,{y:.012,duration:.45,ease:'power2.in'},insertAt + .70)
+    .set(ticket,{visible:false},insertAt + 1.15);
+  releaseAt(timeline, motion, insertAt + 1.20);
+}
+
+export function animatePair(timeline, actors, motion, product, order, frame, nextBox) {
+  const { head, drawer, billet, scraps, lever, gantry, light, beamMaterial: beam, gun, mist, carton, lidGrip, lid, rollers } = actors;
+  const model = product.children[0];
+  const { acetate, glass, logoMaterials, temples, assemblyPoints } = model.userData;
   const finish = new Color(colors[order.design.color].hex);
-  const needsWalk = Math.hypot(robot.position.x - home[0], robot.position.z - home[2]) > .09;
-  const insideDock = robot.position.x < -3.4 && robot.position.z < .3;
-  if (insideDock) {
-    walk(timeline, actors, motion, [robot.position.x, .17, .54], 0, 0, .78);
-    walk(timeline, actors, motion, home, Math.PI / 2, .79, 1.91);
-  } else if (needsWalk) {
-    walk(timeline, actors, motion, home, Math.PI / 2, 0, 2.7);
+  const hand = motion.baseHand;
+  if (nextBox) {
+    timeline.to(carton.position,{x:0,duration:1.10,ease:'power1.out'},.02)
+      .to(lid.rotation,{x:-1.35,duration:.56},1.13);
+  }
+  walk(timeline, actors, motion, workPosition, 1.08, 0, 1.45);
+  timeline.to(frame,{x:-.14,y:1.30,z:.66,zoom:1.12,duration:1.1},.25)
+    .to(head.rotation,{x:.39,y:-.10,duration:.42},1.31);
+  gripAt(timeline, motion, drawer, 1.45, [-.37,.088,.866]);
+  timeline.to(drawer.position,{z:stockOpen,duration:1.15,ease:'power2.inOut'},1.71)
+    .to(billet.position,{z:stockOpen,duration:1.15,ease:'power2.inOut'},1.71);
+  releaseAt(timeline, motion, 2.88);
+  gripAt(timeline, motion, billet, 3.16, [-.56,.10,.16]);
+  timeline.to(billet.position,{y:1.53,duration:.60,ease:'power2.inOut'},3.42)
+    .to(billet.position,{z:.44,duration:.69,ease:'power2.inOut'},4.02)
+    .to(billet.position,{y:1.23,duration:.35,ease:'power1.in'},4.71);
+  releaseAt(timeline, motion, 5.07);
+  gripAt(timeline, motion, drawer, 5.29, [-.37,.088,.866], .13);
+  timeline.to(drawer.position,{z:stockClosed,duration:.56,ease:'power2.inOut'},5.43);
+  releaseAt(timeline, motion, 5.99);
+
+  gripAt(timeline, motion, lever, cue.cutting + .21, [0,.25,.085], .18);
+  timeline.to(lever.rotation,{x:.35,duration:.24,yoyo:true,repeat:1},cue.cutting+.41)
+    .to(frame,{x:.18,y:1.52,z:.42,zoom:1.24,duration:.96},6.32)
+    .to(beam,{opacity:.81,duration:.24},6.82)
+    .to(light,{intensity:5.4,duration:.28},6.82)
+    .to(gantry.position,{x:.30,duration:.52,repeat:4,yoyo:true,ease:'sine.inOut'},6.95)
+    .to(actors.cutScore.userData.material,{opacity:1,duration:.77},7.25)
+    .to(billet.scale,{y:.2,duration:.82},7.82)
+    .set(product,{visible:true},8.64)
+    .set(scraps,{visible:true},8.64)
+    .set(billet,{visible:false},8.64)
+    .fromTo(product.rotation,{x:-1.13},{x:0,duration:1.05,ease:'power1.inOut'},8.68)
+    .fromTo(product.position,{y:1.26},{y:1.47,duration:1.02,ease:'power1.out'},8.68)
+    .to(beam,{opacity:0,duration:.30},9.62)
+    .to(light,{intensity:0,duration:.30},9.62);
+  releaseAt(timeline, motion, 7.14);
+
+  timeline.to(head.rotation,{y:-.23,x:.40,duration:.54},cue.temples);
+  for (let i = 0; i < temples.length; i++) {
+    const start = cue.temples + i * 1.65;
+    const raw = scraps[i];
+    const temple = temples[i];
+    const [x,y,z] = jigPositions[i];
+    gripAt(timeline, motion, raw, start, [-.29,.07,.07]);
+    timeline.to(raw.position,{y:1.50,duration:.23},start+.22)
+      .to(raw.position,{x,y:y+.09,z,duration:.56,ease:'power1.inOut'},start+.45)
+      .to(raw.scale,{x:.74,z:.55,duration:.38},start+1.01)
+      .set(raw,{visible:false},start+1.39)
+      .call(() => {
+        temple.position.copy(product.worldToLocal(new Vector3(x-.18,y+.09,z)));
+        temple.rotation.set(0,-Math.PI/2,0);
+        temple.visible = true;
+      },[],start+1.39);
+    releaseAt(timeline,motion,start+1.41);
   }
 
-  function attach(target, time, offset) {
-    timeline.call(() => {
-      motion.grip.target = target;
-      motion.grip.offset.set(...offset);
-    }, [], time);
-    timeline.to(motion.grip, { weight: 1, duration: .36 }, time);
-  }
-  function release(time) {
-    timeline.to(motion.grip, { weight: 0, duration: .3 }, time);
-  }
+  timeline.to(head.rotation,{y:.09,x:.16,duration:.37},cue.assembly);
+  temples.forEach((temple,index) => {
+    const start = cue.assembly + index * 1.42;
+    gripAt(timeline,motion,temple,start,[-.10,.07,.08]);
+    timeline.to(temple.position,{y:assemblyPoints[index].y+.25,duration:.31},start+.24)
+      .to(temple.position,{x:assemblyPoints[index].x,z:assemblyPoints[index].z,duration:.56,ease:'power2.inOut'},start+.55)
+      .to(temple.rotation,{y:0,duration:.57},start+.55)
+      .to(temple.position,{y:assemblyPoints[index].y,duration:.20},start+1.10);
+    releaseAt(timeline,motion,start+1.31);
+  });
 
-  actors.printTicket(order);
-  timeline
-    .to(robot.rotation, { y: .08, duration: .4 }, needsWalk ? 2.7 : 0)
-    .set(ticket, { visible: true }, .64)
-    .fromTo(ticket.position, { x: -1.04, y: 1.17, z: .862 }, { y: 1.292, duration: 1.8 }, .64)
-    .fromTo(ticket.scale, { y: .04 }, { y: 1, duration: 1.8 }, .64)
-    .to(head.rotation, { y: .46, x: .15, duration: .85 }, 2.7)
-    .to(hand, { x: 1.26, y: 1.27, z: .8, duration: .9 }, 3.05)
-    .to(hand, { x: 1.12, y: 1.58, z: .86, duration: .7 }, 4)
-    .to(ticket.position, { x: -1.19, y: 1.74, z: .89, duration: .7 }, 4)
-    .to(head.rotation, { x: .28, duration: .24, yoyo: true, repeat: 3 }, 4.86)
-    .to(hand, { x: 1.52, y: 2.14, z: .61, duration: .9 }, 6.48)
-    .to(ticket.position, { x: -.75, y: 2.31, z: .65, duration: .9 }, 6.48)
-    .to(ticket.rotation, { x: -.68, duration: .68 }, 7.15)
-    .to(ticket.scale, { y: .06, duration: .55 }, 7.85)
-    .set(ticket, { visible: false }, 8.45);
-
-  walk(timeline, actors, motion, [-1.15, .17, 1.3], 1.25, 8.52, 2.12);
-  attach(billet, 10.9, [-.47, .025, .03]);
-  timeline
-    .to(head.rotation, { x: .24, y: -.15, duration: .7 }, 10.7)
-    .to(billet.position, { x: .27, y: 1.46, z: 1.26, duration: .65 }, 11.3)
-    .to(billet.position, { x: .32, y: 1.22, z: .35, duration: 1.86, ease: 'power2.inOut' }, 12)
-    .to(hand, { x: .56, y: 1.85, z: .64, duration: .6 }, 13.8)
-    .to(framing, { x: .12, y: 1.54, z: .38, zoom: 1.16, duration: 1.35, ease: 'power2.inOut' }, 14.2);
-  release(13.95);
-  timeline
-    .to(lever.rotation, { x: .55, duration: .36, yoyo: true, repeat: 1 }, 14.1)
-    .to(hand, { x: .5, y: 1.72, z: .74, duration: .36, yoyo: true, repeat: 1 }, 14.1)
-    .to(beam, { opacity: .71, duration: .44 }, cue.cutting)
-    .to(actors.light, { intensity: 5.5, duration: .44 }, cue.cutting)
-    .to(gantry.position, { x: .36, duration: 1.2, repeat: 20, yoyo: true, ease: 'sine.inOut' }, cue.cutting)
-    .to(billet.scale, { x: .43, y: .12, z: .51, duration: 2.55, ease: 'power2.in' }, 17)
-    .set(product, { visible: true }, 18.4)
-    .fromTo(product.scale, { x: .29, y: .16, z: .39 }, { x: .68, y: .68, z: .68, duration: 4.1, ease: 'power2.out' }, 18.4)
-    .to(product.position, { y: 1.50, duration: 2.5 }, 18.6)
-    .set(billet, { visible: false }, 19.55)
-    .to(head.rotation, { x: .32, y: .14, duration: 1.4, repeat: 3, yoyo: true, ease: 'sine.inOut' }, 16)
-    .to(actors.armLeft.hand, { x: -.61, y: 1.3, z: .68, duration: 1.2, repeat: 4, yoyo: true }, 17)
-    .to(beam, { opacity: .46, duration: .55, repeat: 22, yoyo: true, ease: 'sine.inOut' }, 18)
-    .to(hand, { x: .43, y: 1.75, z: .79, duration: .66, repeat: 3, yoyo: true }, cue.color)
-    .to(acetate.color, { r: finish.r, g: finish.g, b: finish.b, duration: 6.5, ease: 'power1.inOut' }, cue.color)
-    .to(acetate, { roughness: .23, duration: 6.5 }, cue.color)
-    .to(product.rotation, { y: -.52, duration: 2.3, yoyo: true, repeat: 2, ease: 'sine.inOut' }, cue.color)
-    .to(glass, { opacity: .22, duration: 2.6 }, 31)
-    .set(beam.color, { r: 1, g: .11, b: .52 }, cue.marking)
-    .to(product.rotation, { y: -.59, duration: 2 }, cue.marking);
-
+  gripAt(timeline,motion,gun,cue.color,[-.09,-.04,.015]);
+  timeline.to(gun.position,{x:-.49,y:1.60,z:.55,duration:.68,ease:'power2.out'},17.3)
+    .set(mist.color,{r:finish.r+.16,g:finish.g+.16,b:finish.b+.16},17.85)
+    .to(mist,{opacity:.62,duration:.23},17.94)
+    .to(gun.position,{y:1.37,z:.71,duration:.57,yoyo:true,repeat:2,ease:'sine.inOut'},18.12)
+    .to(acetate.color,{r:finish.r,g:finish.g,b:finish.b,duration:1.77,ease:'power1.inOut'},18.02)
+    .to(acetate,{roughness:.23,duration:1.56},18.08)
+    .to(glass,{opacity:.22,duration:.67},19.36)
+    .to(mist,{opacity:0,duration:.26},19.86)
+    .to(gun.position,{x:gun.userData.parked.x,y:gun.userData.parked.y,z:gun.userData.parked.z,duration:.53,ease:'power1.inOut'},20.10);
+  releaseAt(timeline,motion,20.64);
   if (logoMaterials.length) {
-    timeline.to(logoMaterials, { opacity: 1, duration: 3.1 }, 35);
+    timeline.set(beam.color,{r:1,g:.11,b:.52},cue.marking)
+      .to(beam,{opacity:.45,duration:.44,yoyo:true,repeat:1},20.83)
+      .to(logoMaterials,{opacity:1,duration:.77},20.99);
   }
-  timeline
-    .to(hand, { x: .6, y: 1.42, z: .83, duration: .85, repeat: 3, yoyo: true }, cue.marking)
-    .to(beam, { opacity: 0, duration: .92 }, 41.3)
-    .to(actors.light, { intensity: 0, duration: .92 }, 41.3)
-    .to(gantry.position, { x: -.23, y: 2.42, duration: 1.15 }, 42)
-    .to(product.position, { y: 1.56, z: 1.2, duration: 2.4, ease: 'power2.inOut' }, 41.7)
-    .to(head.rotation, { y: -.07, x: .34, duration: 1.1 }, 43.5);
-  attach(product, 44.3, [-.38, .015, -.018]);
-  timeline
-    .to(product.position, { x: .19, y: 1.96, z: 1.39, duration: 1.64, ease: 'power2.inOut' }, 45.25)
-    .to(product.rotation, { y: -.64, x: .14, duration: 1.25 }, 45.28)
-    .to(head.rotation, { x: .08, duration: .85 }, 46.2)
-    .to(framing, { x: .54, y: 1.57, z: 1.02, zoom: 1.23, duration: 1.3 }, 45.7);
+  gripAt(timeline,motion,product,cue.inspection,[-.35,.044,.028]);
+  timeline.to(product.position,{x:.08,y:1.80,z:1.43,duration:.67,ease:'power2.out'},22.25)
+    .to(product.rotation,{y:-.56,x:.11,duration:.90},22.63)
+    .to(head.rotation,{y:.02,x:-.17,duration:.46},22.88)
+    .to(frame,{x:.56,y:1.52,z:.85,zoom:1.19,duration:1.06},23.06);
 
-  walk(timeline, actors, motion, [1.9, .17, 1.38], 1.29, 48.4, 4.25);
-  timeline
-    .to(product.position, { x: 2.89, y: 1.85, z: .77, duration: 4.25, ease: 'power1.inOut' }, 48.4)
-    .to(framing, { x: 1.34, y: 1.52, z: .44, zoom: 1.08, duration: 3.15, ease: 'sine.inOut' }, 48.6)
-    .to(leftTemple.rotation, { y: -1.39, duration: 1.4 }, 51.1)
-    .to(rightTemple.rotation, { y: 1.51, duration: 1.4 }, 51.3)
-    .to(product.rotation, { y: 0, x: -Math.PI / 2, duration: 1.7 }, 51.7)
-    .to(product.scale, { x: .47, y: .47, z: .47, duration: 1.6 }, 51.9)
-    .to(product.position, { y: 1.479, z: .655, duration: 1.53, ease: 'power2.inOut' }, 53.55);
-  release(55.16);
-  timeline
-    .to(hand, { x: .48, y: 1.73, z: .83, duration: .57 }, 55.12)
-    .to(lid.rotation, { x: 0, duration: 1.4, ease: 'power2.inOut' }, 55.85)
-    .to(hand, { y: 1.41, z: .88, duration: 1.4 }, 55.85)
-    .set(product, { visible: false }, 57.25)
-    .to(hand, { x: .83, y: .78, z: .45, duration: .82 }, 57.3)
-    .to(head.rotation, { y: -.27, x: -.04, duration: 1.1 }, 57.65)
-    .to(framing, { x: -.35, y: 1.48, z: .16, zoom: 1, duration: 2.15 }, 57.7);
+  walk(timeline,actors,motion,[1.91,.17,1.43],1.21,cue.packing,1.95);
+  timeline.to(product.position,{x:2.89,y:1.85,z:.77,duration:1.95,ease:'power1.inOut'},cue.packing)
+    .to(frame,{x:1.48,y:1.48,z:.45,zoom:1.07,duration:1.8},24.12)
+    .to(temples[0].rotation,{y:-1.39,duration:.62},25.35)
+    .to(temples[1].rotation,{y:1.51,duration:.65},25.52)
+    .to(product.rotation,{y:0,x:-Math.PI/2,duration:.58},25.70)
+    .to(product.scale,{x:.42,y:.42,z:.42,duration:.52},25.72)
+    .to(product.position,{y:1.48,z:.655,duration:.45,ease:'power2.inOut'},26.14);
+  releaseAt(timeline,motion,26.63);
+  gripAt(timeline,motion,lidGrip,26.91,[-.03,.085,.058],.15);
+  timeline.to(lid.rotation,{x:0,duration:.57,ease:'power2.inOut'},27.07)
+    .set(product,{visible:false},27.65);
+  releaseAt(timeline,motion,27.72);
+  timeline.to(carton.position,{x:3.09,duration:1.91,ease:'sine.inOut'},cue.conveyor)
+    .to(rollers.map(roll=>roll.rotation),{y:'-='+Math.PI*7.8,duration:1.91,ease:'sine.inOut'},cue.conveyor)
+    .to(frame,{x:2.17,y:1.46,z:.49,zoom:1.06,duration:1.05},cue.conveyor)
+    .set(carton,{visible:false},29.95);
+}
+
+export function dockApproach() {
+  return [dockPoint[0], .17, .69];
 }

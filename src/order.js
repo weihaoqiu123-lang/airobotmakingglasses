@@ -18,15 +18,8 @@ export const defaultDesign = Object.freeze({
 
 export const unitPrice = 299;
 export const maxQuantity = 99;
-export const productionSeconds = 60;
 export const rechargeSeconds = 10;
-
-export const productionCues = {
-  ticket: 0,
-  making: 10,
-  packing: 45,
-  complete: productionSeconds,
-};
+export const pairSeconds = 30;
 
 export function createOrder(design, id) {
   if (!Object.hasOwn(frames, design.frame) || !Object.hasOwn(colors, design.color) ||
@@ -40,27 +33,30 @@ export function createOrder(design, id) {
   });
 }
 
-export function stageAt(seconds) {
-  if (seconds >= productionCues.complete) return 'complete';
-  if (seconds >= productionCues.packing) return 'packing';
-  if (seconds >= productionCues.making) return 'making';
-  return 'ticket';
+export function receiptFor(quantity) {
+  const extra = Math.max(0, quantity - 5);
+  return {
+    length: (100 + extra * 2) / 100,
+    seconds: (180 + extra * 4) / 100,
+    reaction: quantity > 50 ? 3 : quantity > 20 ? 2 : quantity > 5 ? 1 : 0,
+  };
 }
 
-export const fabricationCues = {
-  loading: 10,
-  cutting: 15,
-  color: 24,
-  marking: 34,
-  inspection: 41,
-};
+export function recordDispatch(completed, quantity) {
+  return Math.min(completed + 1, quantity);
+}
 
-export function fabricationAt(seconds) {
-  if (seconds >= productionCues.packing) return 'packing';
-  if (seconds >= fabricationCues.inspection) return 'inspection';
-  if (seconds >= fabricationCues.marking) return 'marking';
-  if (seconds >= fabricationCues.color) return 'color';
-  if (seconds >= fabricationCues.cutting) return 'cutting';
-  if (seconds >= fabricationCues.loading) return 'loading';
-  return 'blank';
+export function pairRate(quantity, completed, override) {
+  return override ?? (quantity > 5 && completed > 0 ? 4 : 1);
+}
+
+export const pairCues = Object.freeze({
+  loading: 0, cutting: 6, temples: 10, assembly: 14, color: 17,
+  marking: 20.5, inspection: 22, packing: 24, conveyor: 28,
+});
+
+const pairPhases = Object.entries(pairCues);
+
+export function pairPhaseAt(seconds) {
+  return pairPhases.findLast(([, start]) => seconds >= start)?.[0] ?? 'loading';
 }

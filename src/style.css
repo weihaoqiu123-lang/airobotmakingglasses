@@ -151,6 +151,7 @@ nav a:first-child, nav a:hover { color: var(--ink); }
 .production-list li[data-state="current"] { color: var(--ink); font-weight: 800; }
 .production-list li[data-state="current"]::before, .production-list li[data-state="done"]::before { background: #68efdb; border-color: #6df7e6; }
 .progress-row { display: flex; align-items: center; gap: 10px; color: var(--muted); font: 700 .78rem var(--mono); }
+.production-count { margin: 9px 0 8px; font-weight: 780; color: var(--accent); font-variant-numeric: tabular-nums; }
 progress { accent-color: #6df7e6; width: 100%; height: 9px; border: 0; overflow: hidden; border-radius: 6px; }
 progress::-webkit-progress-bar { background: #263548; }
 progress::-webkit-progress-value { background: #6df7e6; border-radius: 6px; }

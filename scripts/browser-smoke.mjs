@@ -7,7 +7,7 @@ const browser = await chromium.launch({
   args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
 });
 
-async function open(options) {
+async function open(options, virtualBatch = false) {
   const page = await browser.newPage(options);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -16,12 +16,21 @@ async function open(options) {
       errors.push(message.text());
     }
   });
+  if (virtualBatch) {
+    await page.clock.install();
+    await page.addInitScript(() => {
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (kind, ...options) {
+        return kind === 'webgl2' ? null : getContext.call(this, kind, ...options);
+      };
+    });
+  }
   await page.goto(url);
-  await page.locator('#stage-visual[data-scene=webgl]').waitFor();
+  await page.locator('#stage-visual[data-scene=' + (virtualBatch ? 'fallback' : 'webgl') + ']').waitFor();
   return { page, errors };
 }
 
-async function moveThroughDesign(page, { withLogo = false } = {}) {
+async function moveThroughDesign(page, { withLogo = false, total = 1 } = {}) {
   await page.getByRole('button', { name: /圆框 柔和弧线/ }).click();
   await page.locator('#next').click();
   await page.getByRole('button', { name: '琥珀棕' }).click();
@@ -48,11 +57,11 @@ async function moveThroughDesign(page, { withLogo = false } = {}) {
   const quantity = page.getByRole('spinbutton', { name: '眼镜数量' });
   await quantity.fill('100');
   assert(await page.locator('#next').isDisabled());
-  await quantity.fill('3');
+  await quantity.fill(String(total));
   await page.locator('#next').click();
   await page.getByRole('heading', { name: '确认你的设计' }).waitFor();
-  assert.match(await page.locator('#order-selection').textContent(),
-    withLogo ? /optics-logo\.png · 3 副/ : /无 Logo · 3 副/);
+  assert.equal(await page.locator('#order-selection').textContent(),
+    (withLogo ? 'optics-logo.png' : '无 Logo') + ' · ' + total + ' 副');
 }
 
 async function submit(page) {
@@ -70,18 +79,34 @@ async function checkout(page, earlyWake = false) {
   await page.getByRole('button', { name: '写实商品图', exact: true }).click();
   assert.equal(await page.locator('#product-image').getAttribute('src'), preview);
   await page.locator('#pay').click();
-  assert.equal(await page.locator('#payment-total').textContent(), '¥897');
+  assert.equal(await page.locator('#payment-total').textContent(), '¥299');
   await page.getByRole('button', { name: '取消' }).click();
   assert.equal(await page.locator('#stage-title').textContent(), '写实商品图');
+  await page.evaluate(() => {
+    const stage = document.getElementById('stage-visual');
+    const observations = [];
+    new MutationObserver(() => {
+      const phase = stage.dataset.fabrication;
+      if (phase && observations.at(-1)?.phase !== phase) {
+        observations.push({ phase, count: document.getElementById('production-count')?.textContent });
+      }
+    }).observe(stage, { attributes: true, attributeFilter: ['data-fabrication'] });
+    window.fabricationObservations = observations;
+  });
   await submit(page);
-  assert.match(await page.locator('#stage-meta').textContent(), /^FO-[A-F0-9]{6} · 3 副$/);
+  await page.locator('[data-receipt=print]').waitFor();
+  assert.match(await page.locator('#stage-meta').textContent(), /^FO-[A-F0-9]{6} · 1 副$/);
   assert.equal(await page.locator('#stage-title').textContent(), '工坊收到订单');
-  assert.equal(await page.locator('#stage-visual').getAttribute('data-fabrication'), 'blank');
+  assert.equal(await page.locator('#stage-visual').getAttribute('data-ticket-seconds'), '1.8');
+  assert.equal(await page.locator('#production-count').textContent(), '制作进度 0 / 1');
   await page.getByRole('button', { name: '4 倍速观看' }).click();
-  for (const cue of ['loading', 'cutting', 'color', 'marking', 'inspection', 'packing']) {
-    await page.locator('[data-fabrication=' + cue + ']').waitFor({ timeout: 45000 });
-  }
   await page.getByRole('heading', { name: '制作演示完成' }).waitFor({ timeout: 25000 });
+  const observations = await page.evaluate(() => window.fabricationObservations);
+  assert.deepEqual(observations.map(event => event.phase), [
+    'ticket', 'loading', 'cutting', 'temples', 'assembly', 'color', 'marking', 'inspection', 'packing', 'conveyor', 'complete',
+  ]);
+  assert.equal(observations.find(event => event.phase === 'conveyor').count, '制作进度 0 / 1');
+  assert.equal(await page.locator('#production-count').textContent(), '制作进度 1 / 1');
   assert.equal(await page.locator('#product-image').getAttribute('src'), preview);
   assert.equal(await page.locator('#robot-state').getAttribute('data-status'), 'returning');
   const charging = page.locator('#robot-state[data-status=charging]');
@@ -92,6 +117,7 @@ async function checkout(page, earlyWake = false) {
     assert.equal(await charging.isVisible(), true);
     await submit(page);
     await page.locator('#robot-state[data-status=waking]').waitFor();
+    assert.equal(await page.locator('#stage-visual').getAttribute('data-fabrication'), 'waiting');
     await page.locator('#robot-state[data-status=working]').waitFor();
   } else {
     const since = Date.now();
@@ -101,6 +127,24 @@ async function checkout(page, earlyWake = false) {
     await page.getByRole('button', { name: '再设计一副' }).click();
     await page.getByRole('heading', { name: '选择镜框' }).waitFor();
   }
+}
+
+async function verifyLargeBatch() {
+  const { page, errors } = await open({ reducedMotion: 'reduce' }, true);
+  await moveThroughDesign(page, { total: 40 });
+  await submit(page);
+  await page.locator('[data-receipt=print]').waitFor();
+  assert.equal(await page.locator('#stage-visual').getAttribute('data-ticket-length'), '1.7');
+  assert.equal(await page.locator('#stage-visual').getAttribute('data-ticket-seconds'), '3.2');
+  await page.clock.runFor(107000);
+  assert.equal(await page.locator('#production-count').textContent(), '制作进度 10 / 40');
+  assert.equal(await page.locator('#speed').textContent(), '恢复原速');
+  await page.clock.runFor(226000);
+  assert.equal(await page.locator('#production-count').textContent(), '制作进度 40 / 40');
+  assert.equal(await page.locator('#robot-state').getAttribute('data-status'), 'returning');
+  assert.deepEqual(errors, []);
+  await page.close();
+  console.log('40-pair order: quantity-based receipt, first pair at normal speed, 10 / 40, 40 / 40, and return to charge.');
 }
 
 try {
@@ -116,7 +160,9 @@ try {
   await moveThroughDesign(phone.page);
   await checkout(phone.page, true);
   assert.deepEqual(phone.errors, []);
+  await phone.page.close();
   console.log('Mobile: completed the production run without a logo and woke the charging robot with a new order.');
+  await verifyLargeBatch();
 } finally {
   await browser.close();
 }

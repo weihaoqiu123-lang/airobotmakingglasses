@@ -1,10 +1,10 @@
 import * as T from 'three';
 import { gsap } from 'gsap';
-import { box, disposeModel, drawFlatPreview, makeGlasses } from './glasses.js';
+import { box, disposeModel, drawFlatPreview, makeCutScore, makeGlasses } from './glasses.js';
 import { buildWorkshop, dockPoint, home } from './workshop.js';
-import { createRobotMotion, resetMaterial, runChoreography, walk } from './choreography.js';
+import { animatePair, animateReceipt, createRobotMotion, dockApproach, framingHome, receiptTiming, resetPair, walk } from './choreography.js';
 import { createPhotoStudio } from './photo.js';
-import { defaultDesign, productionSeconds, rechargeSeconds } from './order.js';
+import { defaultDesign, pairPhaseAt, pairRate, pairSeconds, rechargeSeconds, recordDispatch } from './order.js';
 
 function rendererFor(host) {
   const attributes = { alpha: false, antialias: true, preserveDrawingBuffer: true };
@@ -86,8 +86,8 @@ export function createStage(host, onRobotState) {
   const actors = workshop ? buildWorkshop(workshop) : null;
   const motion = actors ? createRobotMotion(actors) : null;
   const product = workshop ? new T.Group() : null;
-  const workshopCamera = workshop ? viewCamera([4.8, 4.25, 12.3], [-.35, 1.48, .16]) : null;
-  const framing = { x: -.35, y: 1.48, z: .16, zoom: 1 };
+  const workshopCamera = workshop ? viewCamera([3.9, 4.4, 12.4], [framingHome.x, framingHome.y, framingHome.z]) : null;
+  const framing = { ...framingHome };
   const preview = renderer ? createProductStage() : null;
   const idle = actors ? idleAnimation(actors, motion) : null;
   let design;
@@ -103,6 +103,8 @@ export function createStage(host, onRobotState) {
   let robotTravel;
   let chargeTimer;
   let robotState = 'ready';
+  let batch;
+  let pending;
   let pointer;
 
   function notify(state, remaining) {
@@ -137,22 +139,9 @@ export function createStage(host, onRobotState) {
     const height = Math.max(1, host.clientHeight);
     renderer.setSize(width, height, false);
     const aspect = width / height;
-    fitCamera(workshopCamera, aspect, 9.72, 4.82);
+    fitCamera(workshopCamera, aspect, 12.15, 5.35);
     fitCamera(preview.camera, aspect, 3.35, 2.02);
     render();
-  }
-
-  function resetProduct() {
-    if (!product) return;
-    product.visible = false;
-    product.position.set(.32, 1.25, .25);
-    product.rotation.set(.015, -.15, 0);
-    product.scale.setScalar(.68);
-    const model = product.children[0];
-    if (model) {
-      model.userData.temples.forEach(temple => { temple.rotation.y = 0; });
-      resetMaterial(model, actors.billet);
-    }
   }
 
   function setDesign(next, logoImage) {
@@ -167,6 +156,14 @@ export function createStage(host, onRobotState) {
     if (modelChanged) {
       captures = {};
       if (renderer) {
+        if (!actors.cutScore || frameChanged) {
+          if (actors.cutScore) {
+            actors.billet.remove(actors.cutScore);
+            disposeModel(actors.cutScore);
+          }
+          actors.cutScore = makeCutScore(design.frame);
+          actors.billet.add(actors.cutScore);
+        }
         for (const group of [product, preview.cradle]) {
           for (const previous of [...group.children]) {
             group.remove(previous);
@@ -174,7 +171,8 @@ export function createStage(host, onRobotState) {
           }
           group.add(makeGlasses(design, image));
         }
-        resetProduct();
+        product.visible = false;
+        if (robotState === 'ready' && !batch) resetPair(actors, product);
         if (!paused && !reducedMotion.matches && (frameChanged || colorChanged || logoChanged)) {
           previewMotion?.kill();
           const angle = logoChanged ? -.29 : frameChanged ? .24 : -.16;
@@ -246,56 +244,52 @@ export function createStage(host, onRobotState) {
     previewMotion?.kill();
     if (actors) {
       actors.ticket.visible = false;
-      actors.ticket.rotation.set(0, 0, 0);
-      actors.beamMaterial.color.set('#74fff1');
-      actors.beamMaterial.opacity = 0;
-      actors.light.intensity = 0;
-      actors.lever.rotation.x = 0;
-      actors.lid.rotation.x = -1.26;
-      actors.gantry.position.set(-.23, 2.42, .052);
+      actors.reaction.visible = false;
       preview.pivot.rotation.y = 0;
-      Object.assign(framing, { x: -.35, y: 1.48, z: .16, zoom: 1 });
-      resetProduct();
+      Object.assign(framing, framingHome);
     }
     updateMotion();
   }
 
-  function cancelCharging() {
-    clearInterval(chargeTimer);
-    chargeTimer = undefined;
-    robotTravel?.kill();
-    robotTravel = undefined;
-    actors?.chargeLevel(0, false);
-  }
-
-  function readyAfterCharge() {
+  function leaveDock() {
     clearInterval(chargeTimer);
     chargeTimer = undefined;
     notify('waking');
     actors?.chargeLevel(1, false);
     actors?.faceStyle(80);
+    actors?.setDoorDisplay(null);
+    render();
+    function arrive() {
+      if (pending) {
+        const job = pending;
+        pending = null;
+        beginReceipt(job);
+      } else {
+        notify('ready');
+        updateMotion();
+      }
+    }
     if (!actors) {
-      notify('ready');
+      robotTravel = gsap.delayedCall(1.15, arrive);
       return;
     }
-    robotTravel = gsap.timeline({ onComplete() {
-      notify('ready');
-      render();
-      updateMotion();
-    } });
-    walk(robotTravel, actors, motion, [-3.84, .17, .57], 0, 0, .74);
-    walk(robotTravel, actors, motion, home, 1.14, .76, 1.04);
-    robotTravel.to(actors.robot.rotation, { y: .02, duration: .35 }, 1.8);
+    robotTravel = gsap.timeline({ onComplete: arrive });
+    robotTravel.to(actors.shutter.scale,{y:.016,duration:.75,ease:'power2.inOut'},0);
+    walk(robotTravel, actors, motion, [dockPoint[0], dockPoint[1] + .032, dockApproach()[2]], 0, .80, 1.03);
+    walk(robotTravel, actors, motion, home, 1.14, 1.84, 1.21);
+    robotTravel.to(actors.robot.rotation, {y:.02,duration:.27},3.05)
+      .to(framing, {...framingHome, duration:1.32, ease:'power1.inOut'},1.84);
   }
 
   function charge() {
+    if (pending) {
+      leaveDock();
+      return;
+    }
     notify('charging', rechargeSeconds);
     actors?.faceStyle(11);
     actors?.chargeLevel(0, true);
-    if (motion) {
-      motion.baseHand.set(.61, .81, .28);
-      actors.armLeft.hand.set(-.61, .81, .28);
-    }
+    actors?.setDoorDisplay(rechargeSeconds);
     render();
     const deadline = Date.now() + rechargeSeconds * 1000;
     let previous = rechargeSeconds;
@@ -306,9 +300,10 @@ export function createStage(host, onRobotState) {
         previous = remaining;
         notify('charging', remaining);
         actors?.chargeLevel(1 - seconds / rechargeSeconds, true);
+        actors?.setDoorDisplay(remaining);
         render();
       }
-      if (seconds === 0) readyAfterCharge();
+      if (seconds === 0) leaveDock();
     }, 100);
   }
 
@@ -320,43 +315,110 @@ export function createStage(host, onRobotState) {
     }
     motion.clear();
     robotTravel = gsap.timeline({ onComplete: charge });
-    walk(robotTravel, actors, motion, [1.74, .17, 1.71], -.75, 0, .52);
-    walk(robotTravel, actors, motion, [-3.84, .17, 1.64], -1.51, .53, 3.00);
-    walk(robotTravel, actors, motion, dockPoint, -Math.PI + .05, 3.54, 1.22);
-    robotTravel.to(actors.robot.rotation, { y: .03, duration: .49 }, 4.78)
-      .to(actors.head.rotation, { y: .02, x: .15, duration: .51 }, 4.78);
+    walk(robotTravel, actors, motion, [1.83, .17, 2.23], -.52, 0, .57);
+    walk(robotTravel, actors, motion, [dockPoint[0], .17, 2.23], -1.52, .58, 2.46);
+    walk(robotTravel, actors, motion, dockApproach(), -Math.PI, 3.05, .86);
+    robotTravel.to(framing,{x:-2.56,y:1.54,z:.11,zoom:1.23,duration:1.49,ease:'power1.inOut'},3.08);
+    robotTravel.to(actors.robot.position,{y:dockPoint[1]+.032,duration:.24},3.92);
+    walk(robotTravel, actors, motion, [dockPoint[0], dockPoint[1] + .032, dockPoint[2]], -Math.PI, 4.18, 1.12);
+    robotTravel.to(actors.robot.rotation, {y:.02,duration:.42},5.32)
+      .to(actors.head.rotation, {y:.02,x:.12,duration:.39},5.32)
+      .to(motion.baseHand,{x:.57,y:.82,z:.30,duration:.36},5.36)
+      .to(actors.armLeft.hand,{x:-.57,y:.82,z:.30,duration:.36},5.36)
+      .to(actors.shutter.scale,{y:1,duration:.78,ease:'power2.inOut'},5.83);
   }
 
-  function start(order, callbacks) {
-    const interrupted = robotState === 'charging' || robotState === 'returning' || robotState === 'waking';
-    cancelCharging();
-    reset();
+  function emit(phase, extra = {}) {
+    batch?.callbacks.update({
+      phase,
+      completed: batch.completed,
+      total: batch.order.design.quantity,
+      rate: pairRate(batch.order.design.quantity, batch.completed, batch.override),
+      ...extra,
+    });
+    if (reducedMotion.matches) render();
+  }
+
+  function beginReceipt(job) {
+    batch = job;
     idle?.pause(0, true);
     motion?.clear();
     actors?.faceStyle(80);
-    notify(interrupted ? 'waking' : 'working');
-    actors?.screenPaint('ORDER IN', order.design, order);
-    const clock = { seconds: 0 };
-    let renderedSlice = -1;
+    if (actors) resetPair(actors, product);
+    Object.assign(framing, { x: -1.61, y: 1.57, z: .28, zoom: 1.15 });
+    notify('working');
+    const timing = receiptTiming(job.order.design.quantity);
+    let lastPart;
+    playhead = gsap.timeline({
+      paused:true, onComplete:beginPair,
+      onUpdate() {
+        const time = this.time();
+        const part = time >= timing.insertAt ? 'insert' : time >= timing.readAt ? 'read' :
+          time >= timing.printAt + timing.seconds ? 'take' : 'print';
+        if (lastPart !== part) {
+          lastPart = part;
+          emit('ticket',{part,receipt:timing});
+        }
+      },
+    });
+    playhead.to({}, {duration:timing.duration},0);
+    if (actors) animateReceipt(playhead, actors, motion, job.order, timing);
+    updateMotion();
+  }
+
+  function beginPair() {
+    const job = batch;
+    const total = job.order.design.quantity;
+    const nextBox = job.completed > 0;
+    motion?.clear();
+    if (actors) resetPair(actors, product, nextBox);
+    let lastPhase;
+    let lastSecond = -1;
     playhead = gsap.timeline({
       paused: true,
-      onUpdate: () => {
-        callbacks.update(clock.seconds);
-        const slice = Math.floor(clock.seconds / 4);
-        if (reducedMotion.matches && slice !== renderedSlice) {
-          renderedSlice = slice;
+      onUpdate() {
+        const position = this.time();
+        const phase = pairPhaseAt(position);
+        if (phase !== lastPhase) {
+          lastPhase = phase;
+          emit(phase);
+        }
+        const second = Math.floor(position);
+        if (reducedMotion.matches && second !== lastSecond) {
+          lastSecond = second;
           render();
         }
       },
       onComplete() {
-        callbacks.complete();
-        returnToDock();
+        job.completed = recordDispatch(job.completed, total);
+        if (job.completed < total) {
+          beginPair();
+        } else {
+          Object.assign(framing, framingHome);
+          emit('complete');
+          batch = null;
+          returnToDock();
+          job.callbacks.complete();
+        }
       },
     });
-    playhead.to(clock, { seconds: productionSeconds, ease: 'none', duration: productionSeconds }, 0);
-    if (interrupted) playhead.call(() => notify('working'), [], 2.8);
-    if (actors) runChoreography(playhead, actors, motion, product, order, framing);
+    playhead.to({}, {duration:pairSeconds},0);
+    if (actors) animatePair(playhead, actors, motion, product, job.order, framing, nextBox);
+    playhead.timeScale(pairRate(total, job.completed, job.override));
+    emit('loading');
     updateMotion();
+  }
+
+  function start(order, callbacks) {
+    reset();
+    const job = { order, callbacks, completed:0, override:undefined };
+    if (robotState === 'ready') {
+      beginReceipt(job);
+    } else {
+      pending = job;
+      callbacks.update({phase:'waiting',completed:0,total:order.design.quantity,rate:1});
+      if (robotState === 'charging') leaveDock();
+    }
   }
 
   function status(mode, order) {
@@ -393,6 +455,11 @@ export function createStage(host, onRobotState) {
   return {
     enabled: Boolean(renderer), setDesign, setView, capture, start, status, reset,
     pause(value) { paused = value; updateMotion(); },
-    speed(value) { playhead?.timeScale(value); },
+    speed(value) {
+      const job = batch ?? pending;
+      if (!job) return;
+      job.override = value;
+      if (batch && playhead?.duration() >= pairSeconds) playhead.timeScale(value);
+    },
   };
 }
