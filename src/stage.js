@@ -124,7 +124,8 @@ export function createStage(host, onRobotState) {
       workshopCamera.zoom = framing.zoom;
       workshopCamera.updateProjectionMatrix();
     }
-    workshopCamera.position.y = 4.4 + framing.lift;
+    const lift = framing.lift;
+    workshopCamera.position.set(3.9 - lift * .13, 4.4 + lift, 12.4 - lift * .50);
     workshopCamera.lookAt(framing.x, framing.y, framing.z);
     renderer.render(workshop, workshopCamera);
   }
@@ -277,6 +278,7 @@ export function createStage(host, onRobotState) {
     robotTravel = gsap.timeline({ onComplete: arrive });
     robotTravel.to(actors.shutter.scale,{y:.016,duration:.75,ease:'power2.inOut'},0);
     walk(robotTravel, actors, motion, [dockPoint[0], dockPoint[1] + .032, dockApproach()[2]], 0, .80, 1.03);
+    robotTravel.to(motion.gait,{fold:0,duration:.46},1.84);
     walk(robotTravel, actors, motion, home, 1.14, 1.84, 1.21);
     robotTravel.to(actors.robot.rotation, {y:.02,duration:.27},3.05)
       .to(framing, {...framingHome, duration:1.32, ease:'power1.inOut'},1.84);
@@ -319,6 +321,7 @@ export function createStage(host, onRobotState) {
     walk(robotTravel, actors, motion, [1.83, .17, 2.23], -.52, 0, .57);
     walk(robotTravel, actors, motion, [dockPoint[0], .17, 2.23], -1.52, .58, 2.46);
     walk(robotTravel, actors, motion, dockApproach(), -Math.PI, 3.05, .86);
+    robotTravel.to(motion.gait,{fold:1,duration:.56},3.10);
     robotTravel.to(framing,{x:-2.56,y:1.54,z:.11,zoom:1.23,duration:1.49,ease:'power1.inOut'},3.08);
     robotTravel.to(actors.robot.position,{y:dockPoint[1]+.032,duration:.24},3.92);
     walk(robotTravel, actors, motion, [dockPoint[0], dockPoint[1] + .032, dockPoint[2]], -Math.PI, 4.18, 1.12);

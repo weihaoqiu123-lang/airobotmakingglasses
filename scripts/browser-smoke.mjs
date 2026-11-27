@@ -101,7 +101,7 @@ async function checkout(page, earlyWake = false) {
   assert.equal(await page.locator('#stage-visual').getAttribute('data-ticket-seconds'), '1.8');
   assert.equal(await page.locator('#production-count').textContent(), '制作进度 0 / 1');
   await page.getByRole('button', { name: '4 倍速观看' }).click();
-  await page.getByRole('heading', { name: '制作演示完成' }).waitFor({ timeout: 25000 });
+  await page.getByRole('heading', { name: '制作演示完成' }).waitFor({ timeout: 60000 });
   const observations = await page.evaluate(() => window.fabricationObservations);
   assert.deepEqual(observations.map(event => event.phase), [
     'ticket', 'loading', 'cutting', 'temples', 'assembly', 'color', 'marking', 'inspection', 'packing', 'conveyor', 'complete',

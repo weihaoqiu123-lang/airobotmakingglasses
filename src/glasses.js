@@ -70,6 +70,20 @@ export function makeCutScore(frame) {
   return lines;
 }
 
+function setUnformedTemple(tube) {
+  const { geometry } = tube;
+  const { tubularSegments, radialSegments, radius } = geometry.parameters;
+  const points = [];
+  for (let row = 0; row <= tubularSegments; row++) {
+    for (let column = 0; column <= radialSegments; column++) {
+      const angle = column * Math.PI * 2 / radialSegments;
+      points.push(Math.cos(angle) * radius, Math.sin(angle) * radius, -.04 - 1.20 * row / tubularSegments);
+    }
+  }
+  geometry.morphAttributes.position = [new T.Float32BufferAttribute(points, 3)];
+  tube.updateMorphTargets();
+}
+
 export function makeGlasses(design, logoImage, { photo = false } = {}) {
   const model = new T.Group();
   model.userData.temples = [];
@@ -111,7 +125,9 @@ export function makeGlasses(design, logoImage, { photo = false } = {}) {
       [side * .035, -.015, -.67], [-side * .01, -.058, -1],
       [-side * .115, -.194, -1.19], [-side * .154, -.248, -1.24],
     ];
-    rod(temple, earpiece, .057, templeFinish);
+    const tube = rod(temple, earpiece, .057, templeFinish);
+    if (!photo) setUnformedTemple(tube);
+    temple.userData.tube = tube;
     box(temple, [.099, .106, .53], [side * .025, -.005, -.346], templeFinish, .035);
     mesh(model, new T.SphereGeometry(.019, 10, 8), hinge, start, .084, .109);
     if (logoImage) logoMaterials.push(addLogo(temple, logoImage, side));

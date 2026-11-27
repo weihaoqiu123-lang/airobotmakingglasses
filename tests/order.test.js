@@ -30,9 +30,9 @@ test('ticket size, time, and surprise match quantity and reaction boundaries', (
 });
 
 test('one pair proceeds from drawer loading through dispatch', () => {
-  assert.deepEqual([0, 6, 10, 15.2, 20, 26.4, 28, 30, 34].map(pairPhaseAt),
+  assert.deepEqual([0, 8.4, 12.2, 20.5, 26.1, 33, 34.7, 36.8, 42].map(pairPhaseAt),
     ['loading', 'cutting', 'temples', 'assembly', 'color', 'marking', 'inspection', 'packing', 'conveyor']);
-  assert.equal(pairSeconds, 36);
+  assert.equal(pairSeconds, 44);
   assert.equal(rechargeSeconds, 10);
 });
 

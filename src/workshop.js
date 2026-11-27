@@ -1,4 +1,5 @@
 import * as T from 'three';
+import { createArmSolver, upperArmLength, forearmLength } from './arm.js';
 import { box, mesh, rod, textureFromCanvas } from './glasses.js';
 import { colors, frames } from './order.js';
 
@@ -197,39 +198,46 @@ function robotArm(robot, side) {
   const shoulder = v(side * .54, 1.38, .018);
   const right = side < 0;
   ball(robot, .173, graphite, shoulder.toArray());
-  const upper = cylinder(robot, .142, 1, shell, [0, 0, 0], .117);
-  const under = cylinder(robot, .12, 1, shell, [0, 0, 0], .091);
+  const upper = cylinder(robot, .142, upperArmLength, shell, [0, 0, 0], .117);
+  const under = cylinder(robot, .12, forearmLength, shell, [0, 0, 0], .091);
   const elbowJoint = ball(robot, .131, graphite, [0, 0, 0]);
   const wrist = ball(robot, .106, silver, [0, 0, 0]);
   const gripper = add(robot);
   box(gripper, [.255, .195, .204], [0, 0, 0], green, .06);
+  const fingers = [];
   for (const digit of [-1, 1]) {
     const finger = box(gripper, [.08, .075, .189], [digit * .095, -.074, .106], graphite, .028);
-    finger.rotation.y = digit * .2;
+    fingers.push({ digit, finger });
   }
+  const anchor = add(gripper, [0, -.065, .163]);
   const hand = v(side * .83, .78, right ? .45 : .22);
   const goal = v(0, 0, 0);
-  const elbow = v(0, 0, 0);
+  const target = v(0, 0, 0);
+  const heldOffset = v(0, 0, 0);
+  const restRotation = new T.Quaternion();
+  const solve = createArmSolver(shoulder, side);
   function align(arm, a, b) {
     goal.subVectors(b, a);
     arm.position.copy(a).addScaledVector(goal, .5);
-    arm.scale.y = goal.length();
     arm.quaternion.setFromUnitVectors(T.Object3D.DEFAULT_UP, goal.normalize());
   }
-  function update() {
-    elbow.copy(shoulder).lerp(hand, .5);
-    elbow.x += side * (right ? .08 : .18);
-    elbow.y -= .17;
-    elbow.z -= .12;
+  function update(fold = 0, rotation = restRotation, aperture = .7, contact = false) {
+    target.copy(hand);
+    if (contact) target.sub(heldOffset.copy(anchor.position).applyQuaternion(rotation));
+    const { elbow, wrist: wristPosition } = solve(target, fold);
     align(upper, shoulder, elbow);
-    align(under, elbow, hand);
+    align(under, elbow, wristPosition);
     elbowJoint.position.copy(elbow);
-    wrist.position.copy(hand);
-    gripper.position.copy(hand);
-    gripper.rotation.z = right ? (1.08 - hand.y) * .35 : .12;
+    wrist.position.copy(wristPosition);
+    gripper.position.copy(wristPosition);
+    gripper.quaternion.copy(rotation);
+    for (const { digit, finger } of fingers) {
+      finger.position.x = digit * (.063 + aperture * .054);
+      finger.rotation.y = digit * (.035 + aperture * .26);
+    }
   }
   update();
-  return { hand, gripper, update };
+  return { hand, gripper, anchor, shoulder, elbowJoint, upper, under, wrist, update };
 }
 
 function eyeFactory(parent) {
@@ -298,8 +306,8 @@ function eyeFactory(parent) {
   for (let index = 0; index < 6; index++) {
     box(unit, [.039, .135, .025], [.878 + index * .074, 1.2, .861], graphite, .005);
   }
-  box(unit, [.283, .135, .098], [-1.269, 2.35, .87], graphite, .025);
-  box(unit, [.212, .032, .022], [-1.269, 2.357, .924], mint, .009);
+  box(unit, [.36, .139, .31], [-1.276, 1.795, 1.05], graphite, .025);
+  box(unit, [.269, .033, .023], [-1.276, 1.8, 1.213], mint, .009);
   const lever = add(unit, [-1.37, 1.733, .846]);
   ball(lever, .096, dark, [0, 0, 0]);
   cylinder(lever, .033, .27, silver, [0, .14, 0]);
@@ -445,7 +453,7 @@ function toolStation(scene) {
   box(drawer, [1.54, .085, 1.37], [0, 0, 0], dark, .026);
   for (const x of [-.752, .752]) box(drawer, [.045, .126, 1.33], [x, .064, 0], silver, .013);
   box(drawer, [1.57, .31, .087], [0, .048, .69], trim, .027);
-  box(drawer, [.41, .065, .105], [-.37, .086, .78], silver, .023);
+  box(drawer, [.26, .065, .105], [-.61, .086, .78], silver, .023);
   label(drawer, 'STOCK', [.36, .12], [.42, .06, .741], '#8cf7e9');
   for (const x of [-.54, .54]) {
     const rail = box(scene, [.048, .052, 1.52], [.32 + x, .51, .65], graphite, .009);
